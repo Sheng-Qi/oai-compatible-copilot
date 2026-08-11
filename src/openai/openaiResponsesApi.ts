@@ -22,6 +22,7 @@ import {
 
 import { CommonApi } from "../commonApi";
 import { logger } from "../logger";
+import { OutputTextStreamNormalizer } from "./outputTextStreamNormalizer";
 
 export interface ResponsesInputMessage {
 	role: "user" | "assistant" | "system";
@@ -70,6 +71,7 @@ export type ResponsesInputItem =
 
 export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<string, unknown>> {
 	private _responseId: string | null = null;
+	private readonly _outputTextStreamNormalizer = new OutputTextStreamNormalizer();
 
 	constructor(modelId: string) {
 		super(modelId);
@@ -353,6 +355,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			logger.error("responses.stream.error", { modelId, error: e instanceof Error ? e.message : String(e) });
 			throw e;
 		} finally {
+			this.processOutputTextChunk(this._outputTextStreamNormalizer.flushPending(), progress);
 			reader.releaseLock();
 			this.reportEndThinking(progress);
 			// Report accumulated usage for the Context Window widget
@@ -440,7 +443,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			case "response.output_text.delta":
 			case "response.refusal.delta": {
 				this._hasEmittedText = false;
-				const delta = this.coerceText(event.delta);
+				const delta = this._outputTextStreamNormalizer.normalize(this.coerceText(event.delta));
 				this.processOutputTextChunk(delta, progress);
 				return;
 			}
