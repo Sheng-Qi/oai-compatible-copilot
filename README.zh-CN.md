@@ -10,8 +10,46 @@
 
 </div>
 
-[![CI](https://github.com/JohnnyZ93/oai-compatible-copilot/actions/workflows/release.yml/badge.svg)](https://github.com/JohnnyZ93/oai-compatible-copilot/actions)
+[![GitHub Release](https://github.com/Sheng-Qi/oai-compatible-copilot/actions/workflows/github-release.yml/badge.svg)](https://github.com/Sheng-Qi/oai-compatible-copilot/actions/workflows/github-release.yml)
 [![License](https://img.shields.io/github/license/JohnnyZ93/oai-compatible-copilot?color=orange&label=License)](https://github.com/JohnnyZ93/oai-compatible-copilot/blob/main/LICENSE)
+
+> [!IMPORTANT]
+> 这是 [JohnnyZ93/oai-compatible-copilot](https://github.com/JohnnyZ93/oai-compatible-copilot) 的维护分支。它保留上游扩展 ID，目前只增加一项聚焦的兼容性修复：当 OpenAI Responses 兼容网关完整重放一遍 `response.output_text.delta` 序列时，Copilot Agent 模式不再显示重复回复。Ask 模式以及原本就发送标准流的供应商不受影响。
+
+## Fork 版本下载
+
+从[本分支的 Releases 页面](https://github.com/Sheng-Qi/oai-compatible-copilot/releases)下载最新 VSIX，然后执行：
+
+```bash
+code --install-extension ./oai-compatible-copilot-*.vsix --force
+```
+
+使用 Remote SSH 时，还需要在远程窗口中安装 VSIX；也可以运行 **Extensions: Install from VSIX...** 并选择远程目标。安装后请重新加载 VS Code 窗口。
+
+### 与上游版本的区别
+
+- 在 Agent 模式中抑制已经输出过的 OpenAI Responses delta 序列被完整重放。
+- 只暂存可能的重放前缀；如果后续内容不匹配或流提前结束，则原样输出暂存文本。
+- 不修改 Chat Completions、Anthropic、Gemini 或 Ollama 的请求和响应处理。
+- 不包含早期实验性的累计快照兼容逻辑。
+
+### 创建 GitHub Release
+
+推送 `v*` 标签后，`github-release.yml` 会自动构建 VSIX、生成 SHA-256 校验文件并创建 GitHub Release：
+
+```bash
+git switch main
+git pull --ff-only
+git tag -a v0.4.2-replay.1 -m "OpenAI Responses Agent replay fix"
+git push origin v0.4.2-replay.1
+```
+
+可以在 <https://github.com/Sheng-Qi/oai-compatible-copilot/actions> 查看构建状态。如果标签有误且 Release 尚未发布，可以删除后重建：
+
+```bash
+git tag -d v0.4.2-replay.1
+git push origin :refs/tags/v0.4.2-replay.1
+```
 
 ## ✨ 特性
 - **多 API 支持**：OpenAI/Ollama/Anthropic/Gemini API（ModelScope、SiliconFlow、DeepSeek 等）
@@ -31,7 +69,7 @@
 - OpenAI 兼容供应商的 API 密钥。
 
 ## ⚡ 快速开始
-1. [在此处](https://marketplace.visualstudio.com/items?itemName=johnny-zhao.oai-compatible-copilot)安装 OAI Compatible Provider for Copilot 扩展。
+1. 从 [GitHub Releases](https://github.com/Sheng-Qi/oai-compatible-copilot/releases) 安装本 fork 的 VSIX；如果不需要 Agent 重放修复，也可以安装上游的 [Marketplace 版本](https://marketplace.visualstudio.com/items?itemName=johnny-zhao.oai-compatible-copilot)。
 2. 打开 VS Code 设置，配置 `oaicopilot.baseUrl` 和 `oaicopilot.models`。
 3. 打开 GitHub Copilot Chat 界面。
 4. 点击模型选择器，选择 "Manage Models..."。

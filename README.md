@@ -10,8 +10,46 @@ English | [简体中文](README.zh-CN.md)
 
 </div>
 
-[![CI](https://github.com/JohnnyZ93/oai-compatible-copilot/actions/workflows/release.yml/badge.svg)](https://github.com/JohnnyZ93/oai-compatible-copilot/actions)
+[![GitHub Release](https://github.com/Sheng-Qi/oai-compatible-copilot/actions/workflows/github-release.yml/badge.svg)](https://github.com/Sheng-Qi/oai-compatible-copilot/actions/workflows/github-release.yml)
 [![License](https://img.shields.io/github/license/JohnnyZ93/oai-compatible-copilot?color=orange&label=License)](https://github.com/JohnnyZ93/oai-compatible-copilot/blob/main/LICENSE)
+
+> [!IMPORTANT]
+> This is a maintained fork of [JohnnyZ93/oai-compatible-copilot](https://github.com/JohnnyZ93/oai-compatible-copilot). It keeps the upstream extension identity and currently adds one focused compatibility fix: OpenAI Responses gateways that replay an entire sequence of `response.output_text.delta` events no longer produce duplicated replies in Copilot Agent mode. Ask mode and providers that already emit standard streams are preserved.
+
+## Fork Releases
+
+Download the latest VSIX from [this fork's Releases page](https://github.com/Sheng-Qi/oai-compatible-copilot/releases), then install it with:
+
+```bash
+code --install-extension ./oai-compatible-copilot-*.vsix --force
+```
+
+For Remote SSH, install the VSIX in the remote window as well, or use **Extensions: Install from VSIX...** and select the remote target. Reload VS Code after installation.
+
+### Differences from upstream
+
+- Suppresses full replay of already emitted OpenAI Responses delta sequences in Agent mode.
+- Buffers only a possible replay prefix; if the sequence diverges or ends early, the buffered text is emitted unchanged.
+- Does not change Chat Completions, Anthropic, Gemini, or Ollama request/response handling.
+- Does not include the earlier experimental cumulative-snapshot handling.
+
+### Creating a GitHub Release
+
+The `github-release.yml` workflow builds the VSIX, generates a SHA-256 checksum, and creates a GitHub Release whenever a `v*` tag is pushed:
+
+```bash
+git switch main
+git pull --ff-only
+git tag -a v0.4.2-replay.1 -m "OpenAI Responses Agent replay fix"
+git push origin v0.4.2-replay.1
+```
+
+Monitor the workflow at <https://github.com/Sheng-Qi/oai-compatible-copilot/actions>. To remove and recreate a mistaken tag before a release is published:
+
+```bash
+git tag -d v0.4.2-replay.1
+git push origin :refs/tags/v0.4.2-replay.1
+```
 
 ## ✨ Features
 - **Multi-API support**: OpenAI/Ollama/Anthropic/Gemini APIs (ModelScope, SiliconFlow, DeepSeek...)
@@ -31,7 +69,7 @@ English | [简体中文](README.zh-CN.md)
 - OpenAI-compatible provider API key.
 
 ## ⚡ Quick Start
-1. Install the OAI Compatible Provider for Copilot extension [here](https://marketplace.visualstudio.com/items?itemName=johnny-zhao.oai-compatible-copilot).
+1. Install this fork's VSIX from [GitHub Releases](https://github.com/Sheng-Qi/oai-compatible-copilot/releases), or use the upstream [Marketplace build](https://marketplace.visualstudio.com/items?itemName=johnny-zhao.oai-compatible-copilot) if you do not need the Agent replay fix.
 2. Open VS Code Settings and configure `oaicopilot.baseUrl` and `oaicopilot.models`.
 3. Open GitHub Copilot Chat interface.
 4. Click the model picker and select "Manage Models...".
