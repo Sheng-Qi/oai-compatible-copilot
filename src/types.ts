@@ -10,7 +10,7 @@ export interface HFProvider {
 }
 
 /**
- * A model entry returned by the Hugging Face router models endpoint.
+ * A model entry returned by the custom OpenAI-compatible router models endpoint.
  */
 export interface HFArchitecture {
 	input_modalities?: string[];
@@ -121,7 +121,7 @@ export interface ReasoningConfig {
 }
 
 /**
- * Supplemental model info from the Hugging Face hub API.
+ * Supplemental model info from the custom hub API.
  */
 // Deprecated: extra model info was previously fetched from the hub API
 export interface HFExtraModelInfo {

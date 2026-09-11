@@ -70,7 +70,7 @@ suite("modelConfiguration", () => {
 
 			assert.ok(info, "deepseek-v4-flash should be registered");
 			assert.strictEqual(info.name, "deepseek-v4-flash");
-			assert.strictEqual(info.detail, "deepseek (OAICopilot)");
+			assert.strictEqual(info.detail, "deepseek (CustomOAI)");
 			assert.strictEqual(info.isUserSelectable, true);
 			assert.deepStrictEqual(info.configurationSchema, createReasoningEffortConfigurationSchema("medium"));
 		} finally {

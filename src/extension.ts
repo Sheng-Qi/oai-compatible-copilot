@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { HuggingFaceChatModelProvider } from "./provider";
+import { CustomOaiChatModelProvider } from "./provider";
 import type { HFModelItem } from "./types";
 import { initStatusBar } from "./statusBar";
 import { ConfigViewPanel } from "./views/configView";
@@ -16,17 +16,17 @@ export function activate(context: vscode.ExtensionContext) {
 	TokenizerManager.initialize(context.extensionPath);
 
 	const tokenCountStatusBarItem: vscode.StatusBarItem = initStatusBar(context);
-	const provider = new HuggingFaceChatModelProvider(context.secrets, tokenCountStatusBarItem);
-	// Register the Hugging Face provider under the vendor id used in package.json
-	vscode.lm.registerLanguageModelChatProvider("oaicopilot", provider);
+	const provider = new CustomOaiChatModelProvider(context.secrets, tokenCountStatusBarItem);
+	// Register the custom provider under the vendor id used in package.json
+	vscode.lm.registerLanguageModelChatProvider("custom-oaicopilot", provider);
 
 	// Management command to configure API key
 	context.subscriptions.push(
-		vscode.commands.registerCommand("oaicopilot.setApikey", async () => {
+		vscode.commands.registerCommand("custom-oaicopilot.setApikey", async () => {
 			const existing = await context.secrets.get("oaicopilot.apiKey");
 			const apiKey = await vscode.window.showInputBox({
-				title: "OAI Compatible Provider API Key",
-				prompt: existing ? "Update your OAI Compatible API key" : "Enter your OAI Compatible API key",
+				title: "Custom OAI Provider API Key",
+				prompt: existing ? "Update your Custom OAI API key" : "Enter your Custom OAI API key",
 				ignoreFocusOut: true,
 				password: true,
 				value: existing ?? "",
@@ -36,17 +36,17 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			if (!apiKey.trim()) {
 				await context.secrets.delete("oaicopilot.apiKey");
-				vscode.window.showInformationMessage("OAI Compatible API key cleared.");
+				vscode.window.showInformationMessage("Custom OAI API key cleared.");
 				return;
 			}
 			await context.secrets.store("oaicopilot.apiKey", apiKey.trim());
-			vscode.window.showInformationMessage("OAI Compatible API key saved.");
+			vscode.window.showInformationMessage("Custom OAI API key saved.");
 		})
 	);
 
 	// Management command to configure provider-specific API keys
 	context.subscriptions.push(
-		vscode.commands.registerCommand("oaicopilot.setProviderApikey", async () => {
+		vscode.commands.registerCommand("custom-oaicopilot.setProviderApikey", async () => {
 			// Get provider list from configuration
 			const config = vscode.workspace.getConfiguration();
 			const userModels = normalizeUserModels(config.get<HFModelItem[]>("oaicopilot.models", []));
@@ -79,7 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 			// Prompt for API key
 			const apiKey = await vscode.window.showInputBox({
-				title: `OAI Compatible API Key for ${selectedProvider}`,
+				title: `Custom OAI API Key for ${selectedProvider}`,
 				prompt: existing ? `Update API key for ${selectedProvider}` : `Enter API key for ${selectedProvider}`,
 				ignoreFocusOut: true,
 				password: true,
@@ -102,17 +102,17 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("oaicopilot.openConfig", async () => {
+		vscode.commands.registerCommand("custom-oaicopilot.openConfig", async () => {
 			ConfigViewPanel.openPanel(context.extensionUri, context.secrets);
 		})
 	);
 
 	// Register the generateGitCommitMessage command handler
 	context.subscriptions.push(
-		vscode.commands.registerCommand("oaicopilot.generateGitCommitMessage", async (scm) => {
+		vscode.commands.registerCommand("custom-oaicopilot.generateGitCommitMessage", async (scm) => {
 			generateCommitMsg(context.secrets, scm);
 		}),
-		vscode.commands.registerCommand("oaicopilot.abortGitCommitMessage", () => {
+		vscode.commands.registerCommand("custom-oaicopilot.abortGitCommitMessage", () => {
 			abortCommitGeneration();
 		})
 	);

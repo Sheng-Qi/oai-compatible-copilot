@@ -29,16 +29,16 @@ import { CommonApi } from "./commonApi";
 import { logger } from "./logger";
 
 /**
- * VS Code Chat provider backed by Hugging Face Inference Providers.
+ * VS Code Chat provider backed by custom OpenAI-compatible endpoints.
  */
-export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
+export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 	/** Track last request completion time for delay calculation. */
 	private _lastRequestTime: number | null = null;
 
 	private readonly _geminiToolCallMetaByCallId = new Map<string, GeminiToolCallMeta>();
 	private readonly _openaiResponsesPreviousResponseIdUnsupportedBaseUrls = new Set<string>();
 
-	static readonly OPENAI_RESPONSES_STATEFUL_MARKER_MIME = "application/vnd.oaicopilot.stateful-marker";
+	static readonly OPENAI_RESPONSES_STATEFUL_MARKER_MIME = "application/vnd.custom-oaicopilot.stateful-marker";
 
 	/**
 	 * Create a provider using the given secret storage for the API key.
@@ -99,7 +99,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				try {
 					progress.report(part);
 				} catch (e) {
-					console.error("[OAI Compatible Model Provider] Progress.report failed", {
+					console.error("[Custom OAI Provider] Progress.report failed", {
 						modelId: model.id,
 						error: e instanceof Error ? { name: e.name, message: e.message } : String(e),
 					});
@@ -181,7 +181,7 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 					provider: provider ?? "",
 					useGenericKey,
 				});
-				throw new Error("OAI Compatible API key not found");
+				throw new Error("Custom OAI API key not found");
 			}
 
 			// send chat request
@@ -481,9 +481,9 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 
 					if (!res.ok) {
 						const errorText = await res.text();
-						console.error("[OAI Compatible Model Provider] OAI Compatible API error response", errorText);
+						console.error("[Custom OAI Provider] Custom OAI API error response", errorText);
 						throw new Error(
-							`OAI Compatible API error: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
+							`Custom OAI API error: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
 						);
 					}
 
@@ -491,12 +491,12 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 				}, retryConfig);
 
 				if (!response.body) {
-					throw new Error("No response body from OAI Compatible API");
+					throw new Error("No response body from Custom OAI API");
 				}
 				await openaiApi.processStreamingResponse(response.body, trackingProgress, token);
 			}
 		} catch (err) {
-			console.error("[OAI Compatible Model Provider] Chat request failed", {
+			console.error("[Custom OAI Provider] Chat request failed", {
 				modelId: model.id,
 				messageCount: messages.length,
 				error: err instanceof Error ? { name: err.name, message: err.message } : String(err),
@@ -531,8 +531,8 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 
 			if (!apiKey && !useGenericKey) {
 				const entered = await vscode.window.showInputBox({
-					title: `OAI Compatible API Key for ${normalizedProvider}`,
-					prompt: `Enter your OAI Compatible API key for ${normalizedProvider}`,
+					title: `Custom OAI API Key for ${normalizedProvider}`,
+					prompt: `Enter your Custom OAI API key for ${normalizedProvider}`,
 					ignoreFocusOut: true,
 					password: true,
 				});
@@ -550,8 +550,8 @@ export class HuggingFaceChatModelProvider implements LanguageModelChatProvider {
 
 		if (!apiKey && useGenericKey) {
 			const entered = await vscode.window.showInputBox({
-				title: "OAI Compatible API Key",
-				prompt: "Enter your OAI Compatible API key",
+				title: "Custom OAI API Key",
+				prompt: "Enter your Custom OAI API key",
 				ignoreFocusOut: true,
 				password: true,
 			});
@@ -569,7 +569,7 @@ type OpenAIResponsesStatefulMarkerLocation = { marker: string; index: number };
 function createOpenAIResponsesStatefulMarkerPart(modelId: string, marker: string): vscode.LanguageModelDataPart {
 	const payload = `${modelId}\\${marker}`;
 	const bytes = new TextEncoder().encode(payload);
-	return new vscode.LanguageModelDataPart(bytes, HuggingFaceChatModelProvider.OPENAI_RESPONSES_STATEFUL_MARKER_MIME);
+	return new vscode.LanguageModelDataPart(bytes, CustomOaiChatModelProvider.OPENAI_RESPONSES_STATEFUL_MARKER_MIME);
 }
 
 function parseOpenAIResponsesStatefulMarkerPart(part: unknown): { modelId: string; marker: string } | null {
@@ -583,7 +583,7 @@ function parseOpenAIResponsesStatefulMarkerPart(part: unknown): { modelId: strin
 	if (!(maybe.data instanceof Uint8Array)) {
 		return null;
 	}
-	if (maybe.mimeType !== HuggingFaceChatModelProvider.OPENAI_RESPONSES_STATEFUL_MARKER_MIME) {
+	if (maybe.mimeType !== CustomOaiChatModelProvider.OPENAI_RESPONSES_STATEFUL_MARKER_MIME) {
 		return null;
 	}
 

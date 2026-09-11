@@ -15,7 +15,7 @@ import { logger } from "./logger";
 
 const DEFAULT_CONTEXT_LENGTH = 128000;
 const DEFAULT_MAX_TOKENS = 4096;
-const EXTENSION_LABEL = "OAICopilot";
+const EXTENSION_LABEL = "CustomOAI";
 
 /**
  * Get the list of available language models contributed by this provider
@@ -74,7 +74,7 @@ export async function prepareLanguageModelChatInformation(
 			if (options.silent) {
 				return [];
 			} else {
-				throw new Error("OAI Compatible API key not found");
+				throw new Error("Custom OAI API key not found");
 			}
 		}
 
@@ -179,12 +179,12 @@ export async function fetchModels(
 			try {
 				text = await resp.text();
 			} catch (error) {
-				console.error("[OAI Compatible Model Provider] Failed to read response text", error);
+				console.error("[Custom OAI Provider] Failed to read response text", error);
 			}
 			const err = new Error(
-				`Failed to fetch OAI Compatible models: ${resp.status} ${resp.statusText}${text ? `\n${text}` : ""}`
+				`Failed to fetch Custom OAI models: ${resp.status} ${resp.statusText}${text ? `\n${text}` : ""}`
 			);
-			console.error("[OAI Compatible Model Provider] Failed to fetch OAI Compatible models", err);
+			console.error("[Custom OAI Provider] Failed to fetch Custom OAI models", err);
 			throw err;
 		}
 		const parsed = (await resp.json()) as HFModelsResponse;
@@ -196,7 +196,7 @@ export async function fetchModels(
 		return { models };
 	} catch (err) {
 		const errorObj = err instanceof Error ? err : new Error(String(err));
-		console.error("[OAI Compatible Model Provider] Failed to fetch OAI Compatible models", err);
+		console.error("[Custom OAI Provider] Failed to fetch Custom OAI models", err);
 		logger.error("models.fetch.error", { baseUrl, error: errorObj.message });
 		throw err;
 	}
@@ -213,8 +213,8 @@ async function ensureApiKey(silent: boolean, secrets: vscode.SecretStorage): Pro
 
 	if (!apiKey && !silent) {
 		const entered = await vscode.window.showInputBox({
-			title: "OAI Compatible API Key",
-			prompt: "Enter your OAI Compatible API key",
+			title: "Custom OAI API Key",
+			prompt: "Enter your Custom OAI API key",
 			ignoreFocusOut: true,
 			password: true,
 		});

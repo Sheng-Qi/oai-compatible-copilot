@@ -1,7 +1,7 @@
 {
-	"name": "oai-compatible-copilot",
-	"publisher": "johnny-zhao",
-	"displayName": "OAI Compatible Provider for Copilot",
+	"name": "custom-oai-copilot",
+	"publisher": "custom",
+	"displayName": "Custom OAI Copilot",
 	"description": "An extension that integrates OpenAI/Ollama/Anthropic/Gemini API Providers into GitHub Copilot Chat",
 	"icon": "assets/logo.png",
 	"keywords": [
@@ -23,7 +23,7 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/JohnnyZ93/oai-compatible-copilot"
+		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 	},
 	"version": "0.4.2",
 	"engines": {
@@ -35,13 +35,13 @@
 	],
 	"badges": [
 		{
-			"url": "https://img.shields.io/github/stars/JohnnyZ93/oai-compatible-copilot?style=social",
-			"description": "Star oai-compatible-copilot on Github",
-			"href": "https://github.com/JohnnyZ93/oai-compatible-copilot"
+			"url": "https://img.shields.io/github/stars/Sheng-Qi/oai-compatible-copilot?style=social",
+			"description": "Star custom-oai-copilot on Github",
+			"href": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 		}
 	],
 	"bugs": {
-		"url": "https://github.com/JohnnyZ93/oai-compatible-copilot/issues"
+		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot/issues"
 	},
 	"license": "MIT",
 	"enabledApiProposals": [
@@ -50,66 +50,66 @@
 	"contributes": {
 		"languageModelChatProviders": [
 			{
-				"vendor": "oaicopilot",
-				"displayName": "OAI Compatible",
-				"managementCommand": "oaicopilot.setApikey"
+				"vendor": "custom-oaicopilot",
+				"displayName": "Custom OAI",
+				"managementCommand": "custom-oaicopilot.setApikey"
 			}
 		],
 		"commands": [
 			{
-				"command": "oaicopilot.setApikey",
-				"category": "OAICopilot",
-				"title": "Set OAI Compatible Apikey"
+				"command": "custom-oaicopilot.setApikey",
+				"category": "CustomOAICopilot",
+				"title": "Set Custom OAI Apikey"
 			},
 			{
-				"command": "oaicopilot.setProviderApikey",
-				"category": "OAICopilot",
-				"title": "Set OAI Compatible Multi-Provider Apikey"
+				"command": "custom-oaicopilot.setProviderApikey",
+				"category": "CustomOAICopilot",
+				"title": "Set Custom OAI Multi-Provider Apikey"
 			},
 			{
-				"command": "oaicopilot.openConfig",
-				"category": "OAICopilot",
+				"command": "custom-oaicopilot.openConfig",
+				"category": "CustomOAICopilot",
 				"title": "Open Configuration UI"
 			},
 			{
-				"command": "oaicopilot.generateGitCommitMessage",
-				"title": "Generate Commit Message with OAICopilot",
-				"category": "OAICopilot",
+				"command": "custom-oaicopilot.generateGitCommitMessage",
+				"title": "Generate Commit Message with CustomOAICopilot",
+				"category": "CustomOAICopilot",
 				"icon": "$(wand)"
 			},
 			{
-				"command": "oaicopilot.abortGitCommitMessage",
-				"title": "Generate Commit Message with OAICopilot - Stop",
-				"category": "OAICopilot",
+				"command": "custom-oaicopilot.abortGitCommitMessage",
+				"title": "Generate Commit Message with CustomOAICopilot - Stop",
+				"category": "CustomOAICopilot",
 				"icon": "$(debug-stop)"
 			}
 		],
 		"menus": {
 			"scm/title": [
 				{
-					"command": "oaicopilot.generateGitCommitMessage",
+					"command": "custom-oaicopilot.generateGitCommitMessage",
 					"group": "navigation",
-					"when": "config.git.enabled && scmProvider == git && !oaicopilot.isGeneratingCommit"
+					"when": "config.git.enabled && scmProvider == git && !custom-oaicopilot.isGeneratingCommit"
 				},
 				{
-					"command": "oaicopilot.abortGitCommitMessage",
+					"command": "custom-oaicopilot.abortGitCommitMessage",
 					"group": "navigation",
-					"when": "config.git.enabled && scmProvider == git && oaicopilot.isGeneratingCommit"
+					"when": "config.git.enabled && scmProvider == git && custom-oaicopilot.isGeneratingCommit"
 				}
 			],
 			"commandPalette": [
 				{
-					"command": "oaicopilot.generateGitCommitMessage",
-					"when": "config.git.enabled && !oaicopilot.isGeneratingCommit"
+					"command": "custom-oaicopilot.generateGitCommitMessage",
+					"when": "config.git.enabled && !custom-oaicopilot.isGeneratingCommit"
 				},
 				{
-					"command": "oaicopilot.abortGitCommitMessage",
-					"when": "config.git.enabled && oaicopilot.isGeneratingCommit"
+					"command": "custom-oaicopilot.abortGitCommitMessage",
+					"when": "config.git.enabled && custom-oaicopilot.isGeneratingCommit"
 				}
 			]
 		},
 		"configuration": {
-			"title": "OAI Compatible Copilot",
+			"title": "Custom OAI Copilot",
 			"properties": {
 				"oaicopilot.logLevel": {
 				"type": "string",

@@ -25,12 +25,12 @@ jobs:
       - name: Package VSIX
         env:
           TAG: ${{ github.ref_name }}
-        run: npx @vscode/vsce package -o "oai-compatible-copilot-${TAG}.vsix"
+      - run: npx @vscode/vsce package -o "custom-oai-copilot-${TAG}.vsix"
 
       - name: Generate checksum
         env:
           TAG: ${{ github.ref_name }}
-        run: sha256sum "oai-compatible-copilot-${TAG}.vsix" > "oai-compatible-copilot-${TAG}.vsix.sha256"
+        run: sha256sum "custom-oai-copilot-${TAG}.vsix" > "custom-oai-copilot-${TAG}.vsix.sha256"
 
       - name: Create GitHub Release
         env:
@@ -38,8 +38,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" \
-            "oai-compatible-copilot-${TAG}.vsix" \
-            "oai-compatible-copilot-${TAG}.vsix.sha256" \
+            "custom-oai-copilot-${TAG}.vsix" \
+            "custom-oai-copilot-${TAG}.vsix.sha256" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
             --generate-notes

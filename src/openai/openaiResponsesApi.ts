@@ -435,7 +435,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 		switch (eventType) {
 			case "error": {
 				const errorText = JSON.stringify(event);
-				console.error("[OAI Compatible Model Provider] Responses API streaming process error:", errorText);
+				console.error("[Custom OAI Provider] Responses API streaming process error:", errorText);
 				return;
 			}
 

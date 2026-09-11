@@ -393,7 +393,7 @@ export async function fetchOllamaModels(
 		try {
 			errorText = await resp.text();
 		} catch (error) {
-			console.error("[OAI Compatible Model Provider] Failed to read response text", error);
+			console.error("[Custom OAI Provider] Failed to read response text", error);
 		}
 		throw new Error(
 			`Ollama API error: [${resp.status}] ${resp.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`

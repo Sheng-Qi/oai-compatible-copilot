@@ -139,7 +139,7 @@ class Logger {
 			fs.appendFileSync(filePath, line, "utf8");
 			this.cleanOldLogs();
 		} catch (e) {
-			console.error("[OAICopilot Logger] Failed to write log:", e);
+			console.error("[CustomOAI Logger] Failed to write log:", e);
 		}
 	}
 
@@ -171,7 +171,7 @@ class Logger {
 				}
 			}
 		} catch (e) {
-			console.error("[OAICopilot Logger] Failed to clean old logs:", e);
+			console.error("[CustomOAI Logger] Failed to clean old logs:", e);
 		}
 	}
 }

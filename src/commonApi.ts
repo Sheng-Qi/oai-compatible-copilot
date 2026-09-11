@@ -159,7 +159,7 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 			const parsed = tryParseJSONObject(argsText);
 			if (!parsed.ok) {
 				if (throwOnInvalid) {
-					console.error("[OAI Compatible Model Provider] Invalid JSON for tool call", {
+					console.error("[Custom OAI Provider] Invalid JSON for tool call", {
 						idx,
 						snippet: (buf.args || "").slice(0, 200),
 					});
@@ -216,7 +216,7 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 			// End the current thinking sequence with empty content and same ID
 			progress.report(new LanguageModelThinkingPart("", this._currentThinkingId));
 		} catch (e) {
-			console.error("[OAI Compatible Model Provider] Failed to end thinking sequence:", e);
+			console.error("[Custom OAI Provider] Failed to end thinking sequence:", e);
 		}
 		this._currentThinkingId = null;
 		// Clear thinking buffer and timer since sequence ended
