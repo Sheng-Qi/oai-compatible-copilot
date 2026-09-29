@@ -1,5 +1,17 @@
 # Change Log
 
+## 0.4.5 (2026-09-29)
+
+- Feat: per-model `proxy`/`timeoutMs` independent of opencode (undici tunnel, no forced H2, dispatcher reuse).
+- Fix: opencode covers responses Muse and completions glm; thinking follows upstream opt-in (`enable_thinking`/`thinking` only when configured).
+- Fix: drop H2 negotiation entirely.
+- Chore: lean vsix (exclude `out/test`).
+
+## 0.4.3 (2026-09-29)
+
+- Chore: move evidence/diagnostic tests to `test/evidence-diagnostics` branch, keep `main` lean.
+- Chore: patch release for easy VS Code update.
+
 ## 0.4.2 (2026-05-19)
 
 - Feat(anthropic): Enable prompt caching. The system prompt and the last tool definition are now marked with `cache_control: { type: "ephemeral" }`, and in-message `cache_control` markers emitted by Copilot (`LanguageModelDataPart` with mimeType `"cache_control"`) are forwarded to Anthropic instead of being silently dropped. Add a per-model `cache_control` boolean (default `true`) to disable it for providers that reject the field.

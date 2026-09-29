@@ -16,3 +16,4 @@ eslint.config.mjs
 AGENTS.md
 CLAUDE.md
 .doc/**
+out/test/**
