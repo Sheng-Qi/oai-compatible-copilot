@@ -179,7 +179,7 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 			rb.reasoning_effort = um.reasoning_effort;
 		}
 
-		// enable_thinking (non-OpenRouter only)
+		// enable_thinking (non-OpenRouter only, same as upstream: opt-in, no default)
 		const enableThinking = um?.enable_thinking;
 		if (enableThinking !== undefined) {
 			rb.enable_thinking = enableThinking;
@@ -189,7 +189,7 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 			}
 		}
 
-		// thinking (Zai provider)
+		// thinking (Zai provider, same as upstream: opt-in only)
 		if (um?.thinking?.type !== undefined) {
 			rb.thinking = {
 				type: um.thinking.type,

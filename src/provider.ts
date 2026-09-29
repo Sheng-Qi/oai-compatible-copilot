@@ -26,7 +26,10 @@ import { AnthropicRequestBody } from "./anthropic/anthropicTypes";
 import { GeminiApi, buildGeminiGenerateContentUrl, type GeminiToolCallMeta } from "./gemini/geminiApi";
 import type { GeminiGenerateContentRequest } from "./gemini/geminiTypes";
 import { CommonApi } from "./commonApi";
+import { createResponsesReasoningPart } from "./openai/responsesState";
+import { createModelFetch } from "./httpClient";
 import { logger } from "./logger";
+import { isUpstreamProviderFailureError, registerSessionId, resolveSessionId, rotateSessionId } from "./sessionRouting";
 
 /**
  * VS Code Chat provider backed by custom OpenAI-compatible endpoints.
@@ -97,6 +100,9 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 		const trackingProgress: Progress<LanguageModelResponsePart2> = {
 			report: (part) => {
 				try {
+					if (part instanceof vscode.LanguageModelTextPart) {
+						collectedOutputText.push(part.value);
+					}
 					progress.report(part);
 				} catch (e) {
 					console.error("[Custom OAI Provider] Progress.report failed", {
@@ -107,6 +113,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 			},
 		};
 		const requestStartTime = Date.now();
+		const collectedOutputText: string[] = [];
 		try {
 			// get model config from user settings
 			const config = vscode.workspace.getConfiguration();
@@ -143,7 +150,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 
 			// Prepare model configuration
 			const modelConfig = {
-				includeReasoningInRequest: um?.include_reasoning_in_request ?? false,
+				includeReasoningInRequest: um?.include_reasoning_in_request ?? um?.opencodeSession === true,
 			};
 
 			// Update Token Usage
@@ -192,308 +199,407 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 
 			// get retry config
 			const retryConfig = createRetryConfig();
+			const opencodeSessionEnabled = um?.opencodeSession === true;
+			const session = opencodeSessionEnabled ? resolveSessionId(model.id, messages) : undefined;
+			const opencodeExtraHeaders: Record<string, string> | undefined = opencodeSessionEnabled
+				? {
+						"x-opencode-request": `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+						"x-opencode-client": "custom-oai-copilot",
+					}
+				: undefined;
 
 			// prepare headers with custom headers if specified
-			const requestHeaders = CommonApi.prepareHeaders(modelApiKey, apiMode, um?.headers);
+			const requestHeaders = CommonApi.prepareHeaders(
+				modelApiKey,
+				apiMode,
+				um?.headers,
+				session?.sessionId,
+				opencodeExtraHeaders
+			);
 			logger.debug("request.headers", {
 				headers: logger.sanitizeHeaders(requestHeaders as Record<string, string>),
 			});
+			if (session) {
+				logger.info("request.session", {
+					modelId: model.id,
+					sessionRegistered: session.registered,
+				});
+			}
 			logger.debug("request.messages.origin", {
 				messages: messages,
 			});
-			if (apiMode === "ollama") {
-				// Ollama native API mode
-				const ollamaApi = new OllamaApi(model.id);
-				const ollamaMessages = ollamaApi.convertMessages(messages, modelConfig);
 
-				let ollamaRequestBody: OllamaRequestBody = {
-					model: parsedModelId.baseId,
-					messages: ollamaMessages,
-					stream: true,
-				};
-				ollamaRequestBody = ollamaApi.prepareRequestBody(ollamaRequestBody, um, options);
-
-				// send Ollama chat request with retry
-				const url = `${BASE_URL.replace(/\/+$/, "")}/api/chat`;
-				logger.debug("request.body", {
-					url: url,
-					requestBody: ollamaRequestBody,
+			const requestTimeoutMs = um?.timeoutMs && um.timeoutMs > 0 ? um.timeoutMs : 0;
+			const useLongLivedFetch = Boolean(um?.proxy) || requestTimeoutMs > 0;
+			const controller = new AbortController();
+			const timeoutId =
+				requestTimeoutMs > 0
+					? setTimeout(() => {
+							if (!controller.signal.aborted) {
+								controller.abort();
+							}
+						}, requestTimeoutMs)
+					: undefined;
+			const cancelListener = token.onCancellationRequested(() => {
+				if (!controller.signal.aborted) {
+					controller.abort();
+				}
+			});
+			const dispatchFetch = useLongLivedFetch
+				? createModelFetch({ proxy: um?.proxy, timeoutMs: requestTimeoutMs || undefined })
+				: fetch;
+			const fetchInit = (headers: Record<string, string>, body: unknown): RequestInit => ({
+				method: "POST",
+				headers,
+				body: JSON.stringify(body),
+				...(useLongLivedFetch ? { signal: controller.signal } : {}),
+			});
+			const rotateSession = (): void => {
+				if (!opencodeSessionEnabled) {
+					return;
+				}
+				const previousSessionId = requestHeaders["x-opencode-session"];
+				requestHeaders["x-opencode-session"] = rotateSessionId(model.id, messages);
+				logger.warn("request.sessionRotated", {
+					modelId: model.id,
+					previousSessionId,
+					newSessionId: requestHeaders["x-opencode-session"],
 				});
-				const response = await executeWithRetry(async () => {
-					const res = await fetch(url, {
-						method: "POST",
-						headers: requestHeaders,
-						body: JSON.stringify(ollamaRequestBody),
-					});
-
-					if (!res.ok) {
-						const errorText = await res.text();
-						console.error("[Ollama Provider] Ollama API error response", errorText);
-						throw new Error(
-							`Ollama API error: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
-						);
-					}
-
-					return res;
-				}, retryConfig);
-
-				if (!response.body) {
-					throw new Error("No response body from Ollama API");
-				}
-				await ollamaApi.processStreamingResponse(response.body, trackingProgress, token);
-			} else if (apiMode === "anthropic") {
-				// Anthropic API mode
-				const anthropicApi = new AnthropicApi(model.id, um?.cache_control !== false);
-				const anthropicMessages = anthropicApi.convertMessages(messages, modelConfig);
-
-				// requestBody
-				let requestBody: AnthropicRequestBody = {
-					model: parsedModelId.baseId,
-					messages: anthropicMessages,
-					stream: true,
-				};
-				requestBody = anthropicApi.prepareRequestBody(requestBody, um, options);
-
-				// send Anthropic chat request with retry
-				const normalizedBaseUrl = BASE_URL.replace(/\/+$/, "");
-				// Some providers require configuring the baseUrl with a version suffix (e.g. .../v1).
-				// Avoid double-appending (e.g. .../v1/v1/messages).
-				const url = normalizedBaseUrl.endsWith("/v1")
-					? `${normalizedBaseUrl}/messages`
-					: `${normalizedBaseUrl}/v1/messages`;
-				logger.debug("request.body", { url, requestBody });
-				const response = await executeWithRetry(async () => {
-					const res = await fetch(url, {
-						method: "POST",
-						headers: requestHeaders,
-						body: JSON.stringify(requestBody),
-					});
-
-					if (!res.ok) {
-						const errorText = await res.text();
-						console.error("[Anthropic Provider] Anthropic API error response", errorText);
-						throw new Error(
-							`Anthropic API error: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
-						);
-					}
-
-					return res;
-				}, retryConfig);
-
-				if (!response.body) {
-					throw new Error("No response body from Anthropic API");
-				}
-				await anthropicApi.processStreamingResponse(response.body, trackingProgress, token);
-			} else if (apiMode === "openai-responses") {
-				// OpenAI Responses API mode
-				const openaiResponsesApi = new OpenaiResponsesApi(model.id);
-				const normalizedBaseUrl = BASE_URL.replace(/\/+$/, "");
-				const statefulModelId = parsedModelId.baseId;
-
-				// Convert full history once (also extracts system `instructions`).
-				const fullInput = openaiResponsesApi.convertMessages(messages, modelConfig);
-
-				const marker = findLastOpenAIResponsesStatefulMarker(statefulModelId, messages);
-				let deltaInput: unknown[] | null = null;
-				if (marker && marker.index >= 0 && marker.index < messages.length - 1) {
-					const deltaMessages = messages.slice(marker.index + 1);
-					const converted = openaiResponsesApi.convertMessages(deltaMessages, modelConfig);
-					if (converted.length > 0) {
-						deltaInput = converted;
-					}
-				}
-
-				const canUsePreviousResponseId =
-					!!marker?.marker &&
-					!this._openaiResponsesPreviousResponseIdUnsupportedBaseUrls.has(normalizedBaseUrl) &&
-					Array.isArray(deltaInput) &&
-					deltaInput.length > 0;
-
-				const input = canUsePreviousResponseId ? deltaInput! : fullInput;
-
-				// requestBody
-				let requestBody: Record<string, unknown> = {
-					model: parsedModelId.baseId,
-					input,
-					stream: true,
-				};
-
-				requestBody = openaiResponsesApi.prepareRequestBody(requestBody, um, options);
-
-				// Add prompt_cache_key to enable OpenAI prompt caching.
-				// Without this parameter, cached_tokens is always 0 even with identical requests.
-				if (!requestBody.prompt_cache_key) {
-					requestBody.prompt_cache_key = `oaicopilot-${parsedModelId.baseId}`;
-				}
-				// send Responses API request with retry
-				const url = `${normalizedBaseUrl}/responses`;
-				logger.debug("request.body", { url, requestBody });
-
-				// If the user explicitly set `previous_response_id` via `extra`, don't apply stateful slicing.
-				let addedPreviousResponseId = false;
-				if (requestBody.previous_response_id !== undefined) {
-					requestBody.input = fullInput;
-				} else if (canUsePreviousResponseId) {
-					requestBody.previous_response_id = marker!.marker;
-					addedPreviousResponseId = true;
-				}
-
-				const sendRequest = async (body: Record<string, unknown>) =>
-					await executeWithRetry(async () => {
-						const res = await fetch(url, {
-							method: "POST",
-							headers: requestHeaders,
-							body: JSON.stringify(body),
-						});
-
-						if (!res.ok) {
-							const errorText = await res.text();
-							const error = new Error(
-								`Responses API error: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
-							);
-							(error as { status?: number; errorText?: string }).status = res.status;
-							(error as { status?: number; errorText?: string }).errorText = errorText;
-							throw error;
-						}
-
-						return res;
-					}, retryConfig);
-
-				let response: Response;
+			};
+			const sendWithSessionFallback = async (send: () => Promise<Response>): Promise<Response> => {
 				try {
-					response = await sendRequest(requestBody);
+					return await send();
 				} catch (err) {
-					// Some Responses-compatible gateways don't support `previous_response_id`.
-					// Fall back to sending full history when the previous-response attempt fails.
-					const status = (err as { status?: unknown })?.status;
-					const shouldFallback =
-						addedPreviousResponseId && typeof status === "number" && status >= 400 && status < 500 && status !== 429;
-					if (!shouldFallback) {
+					if (!opencodeSessionEnabled || !isUpstreamProviderFailureError(err)) {
 						throw err;
 					}
+					rotateSession();
+					return await send();
+				}
+			};
+			const throwHttpError = (kind: string, res: Response, errorText: string, url: string): never => {
+				const error = new Error(
+					`${kind}: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
+				);
+				(error as { status?: number; errorText?: string }).status = res.status;
+				(error as { status?: number; errorText?: string }).errorText = errorText;
+				throw error;
+			};
+			const registerOpenCodeSessionIfNeeded = (): void => {
+				if (opencodeSessionEnabled && session && !session.registered) {
+					registerSessionId(model.id, messages, collectedOutputText.join(""), requestHeaders["x-opencode-session"]);
+				}
+			};
 
-					this._openaiResponsesPreviousResponseIdUnsupportedBaseUrls.add(normalizedBaseUrl);
+			try {
+				if (apiMode === "ollama") {
+					// Ollama native API mode
+					const ollamaApi = new OllamaApi(model.id);
+					const ollamaMessages = ollamaApi.convertMessages(messages, modelConfig);
 
-					let fallbackBody: Record<string, unknown> = {
+					let ollamaRequestBody: OllamaRequestBody = {
 						model: parsedModelId.baseId,
-						input: fullInput,
+						messages: ollamaMessages,
 						stream: true,
 					};
-					fallbackBody = openaiResponsesApi.prepareRequestBody(fallbackBody, um, options);
-					delete fallbackBody.previous_response_id;
-					response = await sendRequest(fallbackBody);
-				}
+					ollamaRequestBody = ollamaApi.prepareRequestBody(ollamaRequestBody, um, options);
 
-				if (!response.body) {
-					throw new Error("No response body from Responses API");
-				}
-				await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
+					// send Ollama chat request with retry
+					const url = `${BASE_URL.replace(/\/+$/, "")}/api/chat`;
+					logger.debug("request.body", {
+						url: url,
+						requestBody: ollamaRequestBody,
+					});
+					const response = await sendWithSessionFallback(async () =>
+						executeWithRetry(async () => {
+							const res = await dispatchFetch(url, fetchInit({ ...requestHeaders }, ollamaRequestBody));
 
-				// Append a stateful marker so future requests can reuse `previous_response_id` (Copilot Chat style).
-				const responseId = openaiResponsesApi.responseId;
-				if (responseId) {
-					trackingProgress.report(createOpenAIResponsesStatefulMarkerPart(statefulModelId, responseId));
-				}
-			} else if (apiMode === "gemini") {
-				// Gemini native API mode
-				const geminiApi = new GeminiApi(model.id, this._geminiToolCallMetaByCallId);
-				const geminiMessages = geminiApi.convertMessages(messages, modelConfig);
+							if (!res.ok) {
+								const errorText = await res.text();
+								console.error("[Ollama Provider] Ollama API error response", errorText);
+								throwHttpError("Ollama API error", res, errorText, url);
+							}
 
-				const systemParts: string[] = [];
-				const contents: GeminiGenerateContentRequest["contents"] = [];
-				for (const msg of geminiMessages) {
-					if (msg.role === "system") {
-						const text = msg.parts
-							.map((p) =>
-								p && typeof p === "object" && typeof (p as { text?: unknown }).text === "string"
-									? String((p as { text: string }).text)
-									: ""
-							)
-							.join("")
-							.trim();
-						if (text) {
-							systemParts.push(text);
+							return res;
+						}, retryConfig)
+					);
+
+					if (!response.body) {
+						throw new Error("No response body from Ollama API");
+					}
+					await ollamaApi.processStreamingResponse(response.body, trackingProgress, token);
+					registerOpenCodeSessionIfNeeded();
+				} else if (apiMode === "anthropic") {
+					// Anthropic API mode
+					const anthropicApi = new AnthropicApi(model.id, um?.cache_control !== false);
+					const anthropicMessages = anthropicApi.convertMessages(messages, modelConfig);
+
+					// requestBody
+					let requestBody: AnthropicRequestBody = {
+						model: parsedModelId.baseId,
+						messages: anthropicMessages,
+						stream: true,
+					};
+					requestBody = anthropicApi.prepareRequestBody(requestBody, um, options);
+
+					// send Anthropic chat request with retry
+					const normalizedBaseUrl = BASE_URL.replace(/\/+$/, "");
+					// Some providers require configuring the baseUrl with a version suffix (e.g. .../v1).
+					// Avoid double-appending (e.g. .../v1/v1/messages).
+					const url = normalizedBaseUrl.endsWith("/v1")
+						? `${normalizedBaseUrl}/messages`
+						: `${normalizedBaseUrl}/v1/messages`;
+					logger.debug("request.body", { url, requestBody });
+					const response = await sendWithSessionFallback(async () =>
+						executeWithRetry(async () => {
+							const res = await dispatchFetch(url, fetchInit({ ...requestHeaders }, requestBody));
+
+							if (!res.ok) {
+								const errorText = await res.text();
+								console.error("[Anthropic Provider] Anthropic API error response", errorText);
+								throwHttpError("Anthropic API error", res, errorText, url);
+							}
+
+							return res;
+						}, retryConfig)
+					);
+
+					if (!response.body) {
+						throw new Error("No response body from Anthropic API");
+					}
+					await anthropicApi.processStreamingResponse(response.body, trackingProgress, token);
+					registerOpenCodeSessionIfNeeded();
+				} else if (apiMode === "openai-responses") {
+					// OpenAI Responses API mode
+					const openaiResponsesApi = new OpenaiResponsesApi(model.id, {
+						harnessInput: opencodeSessionEnabled,
+						includeEncryptedReasoning: opencodeSessionEnabled,
+					});
+					const normalizedBaseUrl = BASE_URL.replace(/\/+$/, "");
+					const statefulModelId = parsedModelId.baseId;
+
+					// Convert full history once (also extracts system `instructions`).
+					const fullInput = openaiResponsesApi.convertMessages(messages, modelConfig);
+
+					const marker = findLastOpenAIResponsesStatefulMarker(statefulModelId, messages);
+					let deltaInput: unknown[] | null = null;
+					if (!opencodeSessionEnabled && marker && marker.index >= 0 && marker.index < messages.length - 1) {
+						const converted = openaiResponsesApi.convertMessages(messages.slice(marker.index + 1), modelConfig);
+						if (converted.length > 0) {
+							deltaInput = converted;
 						}
-						continue;
 					}
-					contents.push({ role: msg.role, parts: msg.parts });
-				}
 
-				let requestBody: GeminiGenerateContentRequest = {
-					contents,
-				};
-				if (systemParts.length > 0) {
-					requestBody.systemInstruction = { role: "user", parts: [{ text: systemParts.join("\n") }] };
-				}
-				requestBody = geminiApi.prepareRequestBody(requestBody, um, options);
+					const canUsePreviousResponseId =
+						!opencodeSessionEnabled &&
+						!!marker?.marker &&
+						!this._openaiResponsesPreviousResponseIdUnsupportedBaseUrls.has(normalizedBaseUrl) &&
+						Array.isArray(deltaInput) &&
+						deltaInput.length > 0;
 
-				const url = buildGeminiGenerateContentUrl(BASE_URL, parsedModelId.baseId, true);
-				logger.debug("request.body", { url, requestBody });
-				if (!url) {
-					throw new Error("Invalid Gemini base URL configuration.");
-				}
+					const input = canUsePreviousResponseId ? deltaInput! : fullInput;
 
-				const response = await executeWithRetry(async () => {
-					const res = await fetch(url, {
-						method: "POST",
-						headers: requestHeaders,
-						body: JSON.stringify(requestBody),
+					// requestBody
+					let requestBody: Record<string, unknown> = {
+						model: parsedModelId.baseId,
+						input,
+						stream: true,
+					};
+
+					requestBody = openaiResponsesApi.prepareRequestBody(requestBody, um, options);
+
+					if (!requestBody.prompt_cache_key) {
+						requestBody.prompt_cache_key = opencodeSessionEnabled
+							? session!.sessionId
+							: `oaicopilot-${parsedModelId.baseId}`;
+					}
+					if (opencodeSessionEnabled) {
+						if (requestBody.store === undefined) {
+							requestBody.store = false;
+						}
+						delete requestBody.previous_response_id;
+					}
+
+					// If the user explicitly set `previous_response_id` via `extra`, don't apply stateful slicing.
+					let addedPreviousResponseId = false;
+					if (requestBody.previous_response_id !== undefined) {
+						requestBody.input = fullInput;
+					} else if (canUsePreviousResponseId) {
+						requestBody.previous_response_id = marker!.marker;
+						addedPreviousResponseId = true;
+					}
+
+					const url = `${normalizedBaseUrl}/responses`;
+					logger.info("request.responsesState", {
+						modelId: model.id,
+						opencodeSession: opencodeSessionEnabled,
+						usingPreviousResponseId: addedPreviousResponseId,
+						proxy: um?.proxy || "",
+						timeoutMs: requestTimeoutMs,
 					});
+					logger.debug("request.body", { url, requestBody });
 
-					if (!res.ok) {
-						const errorText = await res.text();
-						console.error("[Gemini Provider] Gemini API error response", errorText);
-						throw new Error(
-							`Gemini API error: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
-						);
+					const sendRequest = async (body: Record<string, unknown>) =>
+						await executeWithRetry(async () => {
+							const res = await dispatchFetch(url, fetchInit({ ...requestHeaders }, body));
+
+							if (!res.ok) {
+								const errorText = await res.text();
+								console.error("[Responses Provider] Responses API error response", errorText);
+								throwHttpError("Responses API error", res, errorText, url);
+							}
+
+							return res;
+						}, retryConfig);
+
+					let response: Response;
+					try {
+						response = await sendWithSessionFallback(() => sendRequest(requestBody));
+					} catch (err) {
+						// Some Responses-compatible gateways don't support `previous_response_id`.
+						// Fall back to sending full history when the previous-response attempt fails.
+						const status = (err as { status?: unknown })?.status;
+						const shouldFallback =
+							addedPreviousResponseId && typeof status === "number" && status >= 400 && status < 500 && status !== 429;
+						if (!shouldFallback) {
+							throw err;
+						}
+
+						this._openaiResponsesPreviousResponseIdUnsupportedBaseUrls.add(normalizedBaseUrl);
+
+						let fallbackBody: Record<string, unknown> = {
+							model: parsedModelId.baseId,
+							input: fullInput,
+							stream: true,
+						};
+						fallbackBody = openaiResponsesApi.prepareRequestBody(fallbackBody, um, options);
+						if (!fallbackBody.prompt_cache_key) {
+							fallbackBody.prompt_cache_key = `oaicopilot-${parsedModelId.baseId}`;
+						}
+						delete fallbackBody.previous_response_id;
+						logger.warn("request.previousResponseFallback", {
+							modelId: model.id,
+							status,
+						});
+						response = await sendRequest(fallbackBody);
 					}
 
-					return res;
-				}, retryConfig);
+					if (!response.body) {
+						throw new Error("No response body from Responses API");
+					}
+					await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
 
-				if (!response.body) {
-					throw new Error("No response body from Gemini API");
-				}
-				await geminiApi.processStreamingResponse(response.body, trackingProgress, token);
-			} else {
-				// OpenAI compatible API mode (default)
-				const openaiApi = new OpenaiApi(model.id);
-				const openaiMessages = openaiApi.convertMessages(messages, modelConfig);
-
-				// requestBody
-				let requestBody: Record<string, unknown> = {
-					model: parsedModelId.baseId,
-					messages: openaiMessages,
-					stream: true,
-					stream_options: { include_usage: true },
-				};
-				requestBody = openaiApi.prepareRequestBody(requestBody, um, options);
-
-				// send chat request with retry
-				const url = `${BASE_URL.replace(/\/+$/, "")}/chat/completions`;
-				logger.debug("request.body", { url, requestBody });
-				const response = await executeWithRetry(async () => {
-					const res = await fetch(url, {
-						method: "POST",
-						headers: requestHeaders,
-						body: JSON.stringify(requestBody),
-					});
-
-					if (!res.ok) {
-						const errorText = await res.text();
-						console.error("[Custom OAI Provider] Custom OAI API error response", errorText);
-						throw new Error(
-							`Custom OAI API error: [${res.status}] ${res.statusText}${errorText ? `\n${errorText}` : ""}\nURL: ${url}`
-						);
+					if (opencodeSessionEnabled) {
+						for (const item of openaiResponsesApi.takeCapturedReasoningItems()) {
+							trackingProgress.report(createResponsesReasoningPart(item));
+						}
 					}
 
-					return res;
-				}, retryConfig);
+					const responseId = openaiResponsesApi.responseId;
+					if (responseId) {
+						trackingProgress.report(createOpenAIResponsesStatefulMarkerPart(statefulModelId, responseId));
+					}
+					registerOpenCodeSessionIfNeeded();
+				} else if (apiMode === "gemini") {
+					// Gemini native API mode
+					const geminiApi = new GeminiApi(model.id, this._geminiToolCallMetaByCallId);
+					const geminiMessages = geminiApi.convertMessages(messages, modelConfig);
 
-				if (!response.body) {
-					throw new Error("No response body from Custom OAI API");
+					const systemParts: string[] = [];
+					const contents: GeminiGenerateContentRequest["contents"] = [];
+					for (const msg of geminiMessages) {
+						if (msg.role === "system") {
+							const text = msg.parts
+								.map((p) =>
+									p && typeof p === "object" && typeof (p as { text?: unknown }).text === "string"
+										? String((p as { text: string }).text)
+										: ""
+								)
+								.join("")
+								.trim();
+							if (text) {
+								systemParts.push(text);
+							}
+							continue;
+						}
+						contents.push({ role: msg.role, parts: msg.parts });
+					}
+
+					let requestBody: GeminiGenerateContentRequest = {
+						contents,
+					};
+					if (systemParts.length > 0) {
+						requestBody.systemInstruction = { role: "user", parts: [{ text: systemParts.join("\n") }] };
+					}
+					requestBody = geminiApi.prepareRequestBody(requestBody, um, options);
+
+					const url = buildGeminiGenerateContentUrl(BASE_URL, parsedModelId.baseId, true);
+					logger.debug("request.body", { url, requestBody });
+					if (!url) {
+						throw new Error("Invalid Gemini base URL configuration.");
+					}
+
+					const response = await sendWithSessionFallback(async () =>
+						executeWithRetry(async () => {
+							const res = await dispatchFetch(url, fetchInit({ ...requestHeaders }, requestBody));
+
+							if (!res.ok) {
+								const errorText = await res.text();
+								console.error("[Gemini Provider] Gemini API error response", errorText);
+								throwHttpError("Gemini API error", res, errorText, url);
+							}
+
+							return res;
+						}, retryConfig)
+					);
+
+					if (!response.body) {
+						throw new Error("No response body from Gemini API");
+					}
+					await geminiApi.processStreamingResponse(response.body, trackingProgress, token);
+					registerOpenCodeSessionIfNeeded();
+				} else {
+					// OpenAI compatible API mode (default)
+					const openaiApi = new OpenaiApi(model.id);
+					const openaiMessages = openaiApi.convertMessages(messages, modelConfig);
+
+					// requestBody
+					let requestBody: Record<string, unknown> = {
+						model: parsedModelId.baseId,
+						messages: openaiMessages,
+						stream: true,
+						stream_options: { include_usage: true },
+					};
+					requestBody = openaiApi.prepareRequestBody(requestBody, um, options);
+
+					// send chat request with retry
+					const url = `${BASE_URL.replace(/\/+$/, "")}/chat/completions`;
+					logger.debug("request.body", { url, requestBody });
+					const response = await sendWithSessionFallback(async () =>
+						executeWithRetry(async () => {
+							const res = await dispatchFetch(url, fetchInit({ ...requestHeaders }, requestBody));
+
+							if (!res.ok) {
+								const errorText = await res.text();
+								console.error("[Custom OAI Provider] Custom OAI API error response", errorText);
+								throwHttpError("Custom OAI API error", res, errorText, url);
+							}
+
+							return res;
+						}, retryConfig)
+					);
+
+					if (!response.body) {
+						throw new Error("No response body from Custom OAI API");
+					}
+					await openaiApi.processStreamingResponse(response.body, trackingProgress, token);
+					registerOpenCodeSessionIfNeeded();
 				}
-				await openaiApi.processStreamingResponse(response.body, trackingProgress, token);
+			} finally {
+				if (timeoutId) {
+					clearTimeout(timeoutId);
+				}
+				cancelListener.dispose();
 			}
 		} catch (err) {
 			console.error("[Custom OAI Provider] Chat request failed", {
@@ -564,7 +670,10 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 	}
 }
 
-type OpenAIResponsesStatefulMarkerLocation = { marker: string; index: number };
+interface OpenAIResponsesStatefulMarkerLocation {
+	marker: string;
+	index: number;
+}
 
 function createOpenAIResponsesStatefulMarkerPart(modelId: string, marker: string): vscode.LanguageModelDataPart {
 	const payload = `${modelId}\\${marker}`;

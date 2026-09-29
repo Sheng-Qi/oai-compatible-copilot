@@ -281,17 +281,31 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 	 * @param apiKey The API key to use.
 	 * @param apiMode The apiMode (affects header format).
 	 * @param customHeaders Optional custom headers from model config.
+	 * @param sessionId Optional stable per-conversation session ID. Opencode
+	 * Go-family upstreams use it for routing and prompt-cache affinity, plus
+	 * harness-style `x-opencode-request/client` correlation. When omitted, no
+	 * session header is sent.
+	 * @param extraHeaders Optional extra harness headers (request id/client).
 	 * @returns Headers object.
 	 */
 	public static prepareHeaders(
 		apiKey: string,
 		apiMode: string,
-		customHeaders?: Record<string, string>
+		customHeaders?: Record<string, string>,
+		sessionId?: string,
+		extraHeaders?: Record<string, string>
 	): Record<string, string> {
+		const isOpenCodeSession = Boolean(sessionId && sessionId.trim()) || Boolean(extraHeaders?.["x-opencode-client"]);
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
-			"User-Agent": VersionManager.getUserAgent(),
+			"User-Agent": isOpenCodeSession
+				? process.env.OPENCODEGO_USER_AGENT?.trim() || VersionManager.getOpenCodeUserAgent()
+				: VersionManager.getUserAgent(),
 		};
+		if (isOpenCodeSession) {
+			headers.Accept = "*/*";
+			headers["Accept-Encoding"] = "gzip, deflate, br, zstd";
+		}
 
 		// Provider-specific header formats
 		if (apiMode === "anthropic") {
@@ -306,7 +320,18 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 			headers["Authorization"] = `Bearer ${apiKey}`;
 		}
 
-		// Merge custom headers
+		if (sessionId && sessionId.trim()) {
+			headers["x-opencode-session"] = sessionId.trim();
+		}
+		if (extraHeaders) {
+			for (const [key, value] of Object.entries(extraHeaders)) {
+				if (value && value.trim()) {
+					headers[key] = value.trim();
+				}
+			}
+		}
+
+		// Merge custom headers (explicit model headers win).
 		if (customHeaders) {
 			return { ...headers, ...customHeaders };
 		}

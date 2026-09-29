@@ -20,7 +20,16 @@ export class VersionManager {
 	 */
 	static getUserAgent(): string {
 		const vscodeVersion = vscode.version;
-			return `custom-oai-copilot/${this.getVersion()} VSCode/${vscodeVersion}`;
+		return `custom-oai-copilot/${this.getVersion()} VSCode/${vscodeVersion}`;
+	}
+
+	/**
+	 * User-Agent used for OpenCode Go/Zen inference. Matches OnesoftQwQ's
+	 * plugin so Cloudflare/OpenCode session affinity and prompt cache keep
+	 * treating this client as an OpenCode Go caller.
+	 */
+	static getOpenCodeUserAgent(): string {
+		return `opencode-go-copilot/${this.getVersion()} VSCode/${vscode.version}`;
 	}
 
 	/**
@@ -28,9 +37,9 @@ export class VersionManager {
 	 */
 	static getClientInfo(): { name: string; version: string; author: string } {
 		return {
-				name: "custom-oai-copilot",
-				version: this.getVersion(),
-				author: "custom",
+			name: "custom-oai-copilot",
+			version: this.getVersion(),
+			author: "custom",
 		};
 	}
 }

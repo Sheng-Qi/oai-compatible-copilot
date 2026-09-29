@@ -70,6 +70,30 @@ export interface HFModelItem {
 	headers?: Record<string, string>;
 
 	/**
+	 * Optional per-model HTTP/SOCKS proxy. Empty/omitted means direct connect.
+	 * Examples: `http://127.0.0.1:2082`, `socks5://127.0.0.1:1082`.
+	 */
+	proxy?: string;
+
+	/**
+	 * Optional per-model request timeout in milliseconds covering the whole SSE body.
+	 * Empty/omitted keeps the default VS Code/Electron fetch. Applies to any
+	 * model (opencode or router) that needs long streams.
+	 */
+	timeoutMs?: number;
+
+	/**
+	 * When true, use the OpenCode session contract (works for both
+	 * `openai-responses` Muse and `openai` completions like glm-5.3-flash):
+	 * stable `x-opencode-session` on every inference request, OpenCode UA/Accept,
+	 * session-scoped `prompt_cache_key`, `store=false` for Responses, and
+	 * `reasoning_content` replay. Thinking follows upstream opt-in
+	 * (`enable_thinking`/`thinking` only when configured).
+	 * Leave false for router/OpenAI-compatible models.
+	 */
+	opencodeSession?: boolean;
+
+	/**
 	 * Whether to include reasoning_content in assistant messages sent to the API.
 	 * Support deepseek-v3.2 or others.
 	 */

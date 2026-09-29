@@ -5,12 +5,14 @@ import { initStatusBar } from "./statusBar";
 import { ConfigViewPanel } from "./views/configView";
 import { logger } from "./logger";
 import { normalizeUserModels } from "./utils";
+import { initSessionRouting } from "./sessionRouting";
 import { abortCommitGeneration, generateCommitMsg } from "./gitCommit/commitMessageGenerator";
 import { TokenizerManager } from "./tokenizer/tokenizerManager";
 
 export function activate(context: vscode.ExtensionContext) {
 	// Initialize logger
 	logger.init();
+	initSessionRouting(context.globalState);
 
 	// Initialize TokenizerManager with extension path
 	TokenizerManager.initialize(context.extensionPath);

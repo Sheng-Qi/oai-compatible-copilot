@@ -112,18 +112,18 @@
 			"title": "Custom OAI Copilot",
 			"properties": {
 				"oaicopilot.logLevel": {
-				"type": "string",
-				"default": "off",
-				"enum": [
-					"off",
-					"debug",
-					"info",
-					"warn",
-					"error"
-				],
-				"description": "Debug log level. Logs are written to ~/.copilot/oaicopilot/logs/ as JSON lines. Default is 'off' (no logging)."
-			},
-			"oaicopilot.baseUrl": {
+					"type": "string",
+					"default": "off",
+					"enum": [
+						"off",
+						"debug",
+						"info",
+						"warn",
+						"error"
+					],
+					"description": "Debug log level. Logs are written to ~/.copilot/oaicopilot/logs/ as JSON lines. Default is 'off' (no logging)."
+				},
+				"oaicopilot.baseUrl": {
 					"type": "string",
 					"default": "https://router.huggingface.co/v1",
 					"description": "The base URL for the Openai Compatible Inference API. Default value is Hugging Face."
@@ -329,6 +329,22 @@
 								},
 								"description": "Custom HTTP headers to be sent with every request to this model's provider. These headers will be merged with the default headers (Authorization, Content-Type, User-Agent)."
 							},
+							"proxy": {
+								"type": "string",
+								"default": "",
+								"description": "Optional per-model HTTP or SOCKS proxy (e.g. http://127.0.0.1:2082 or socks5://127.0.0.1:1082). Empty means direct connect and does not affect other models."
+							},
+							"timeoutMs": {
+								"type": "number",
+								"default": 0,
+								"minimum": 0,
+								"description": "Optional per-model timeout in milliseconds covering the whole streaming body. 0 keeps the default VS Code fetch. Works for any model (opencode or router)."
+							},
+							"opencodeSession": {
+								"type": "boolean",
+								"default": false,
+								"description": "Use the OpenCode session contract (responses Muse and completions glm): stable x-opencode-session, OpenCode UA, prompt-cache affinity, store=false for Responses, reasoning_content replay. Thinking follows upstream opt-in. Leave false for router models."
+							},
 							"include_reasoning_in_request": {
 								"type": "boolean",
 								"default": false,
@@ -476,7 +492,8 @@
 		"build": "npx @vscode/vsce package -o extension.vsix"
 	},
 	"dependencies": {
-		"@microsoft/tiktokenizer": "^1.0.10"
+		"@microsoft/tiktokenizer": "^1.0.10",
+		"undici": "^6.21.0"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.13.0",

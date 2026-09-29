@@ -23,6 +23,12 @@ import {
 import { CommonApi } from "../commonApi";
 import { logger } from "../logger";
 import { OutputTextStreamNormalizer } from "./outputTextStreamNormalizer";
+import {
+	createResponsesReasoningPart,
+	normalizeResponsesReasoningItem,
+	parseResponsesReasoningPart,
+	type ResponsesReasoningReplayItem,
+} from "./responsesState";
 
 export interface ResponsesInputMessage {
 	role: "user" | "assistant" | "system";
@@ -41,26 +47,27 @@ export interface ResponsesContentPart {
 
 export interface ResponsesFunctionCall {
 	type: "function_call";
-	id: string;
 	call_id: string;
 	name: string;
 	arguments: string;
-	status: "completed";
+	id?: string;
+	status?: "completed";
 }
 
 export interface ResponsesFunctionCallOutput {
 	type: "function_call_output";
 	call_id: string;
 	output: string;
-	id: string;
-	status: "completed";
+	id?: string;
+	status?: "completed";
 }
 
 export interface ResponsesReasoning {
 	type: "reasoning";
 	summary: ResponsesContentPart[];
-	id: string;
-	status: "completed";
+	id?: string;
+	encrypted_content?: string | null;
+	status?: "completed";
 }
 
 export type ResponsesInputItem =
@@ -69,16 +76,37 @@ export type ResponsesInputItem =
 	| ResponsesFunctionCallOutput
 	| ResponsesReasoning;
 
+export interface OpenaiResponsesApiOptions {
+	harnessInput?: boolean;
+	includeEncryptedReasoning?: boolean;
+}
+
 export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<string, unknown>> {
 	private _responseId: string | null = null;
+	private _responseCompleted = false;
 	private readonly _outputTextStreamNormalizer = new OutputTextStreamNormalizer();
+	private _capturedReasoningItems: ResponsesReasoningReplayItem[] = [];
+	private readonly _harnessInput: boolean;
+	private readonly _includeEncryptedReasoning: boolean;
 
-	constructor(modelId: string) {
+	constructor(modelId: string, options: OpenaiResponsesApiOptions = {}) {
 		super(modelId);
+		this._harnessInput = options.harnessInput === true;
+		this._includeEncryptedReasoning = options.includeEncryptedReasoning === true;
 	}
 
 	get responseId(): string | null {
 		return this._responseId;
+	}
+
+	get responseCompleted(): boolean {
+		return this._responseCompleted;
+	}
+
+	takeCapturedReasoningItems(): ResponsesReasoningReplayItem[] {
+		const items = this._capturedReasoningItems;
+		this._capturedReasoningItems = [];
+		return items;
 	}
 
 	convertMessages(
@@ -94,8 +122,14 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			const toolCalls: OpenAIToolCall[] = [];
 			const toolResults: { callId: string; content: string }[] = [];
 			const thinkingParts: string[] = [];
+			const reasoningReplays: ResponsesReasoningReplayItem[] = [];
 
 			for (const part of m.content ?? []) {
+				const reasoningReplay = parseResponsesReasoningPart(part);
+				if (reasoningReplay) {
+					reasoningReplays.push(reasoningReplay);
+					continue;
+				}
 				if (part instanceof vscode.LanguageModelTextPart) {
 					textParts.push(part.value);
 				} else if (part instanceof vscode.LanguageModelDataPart && isImageMimeType(part.mimeType)) {
@@ -124,34 +158,67 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 
 			// assistant message (optional)
 			if (role === "assistant") {
+				if (this._harnessInput) {
+					for (const replay of reasoningReplays) {
+						out.push({
+							type: "reasoning",
+							summary: replay.summary,
+							encrypted_content: replay.encrypted_content,
+						});
+					}
+				}
 				if (joinedText) {
-					out.push({
-						role: "assistant",
-						content: [{ type: "output_text", text: joinedText }],
-						type: "message",
-						id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-						status: "completed",
-					});
+					out.push(
+						this._harnessInput
+							? {
+									role: "assistant",
+									content: [{ type: "output_text", text: joinedText }],
+									type: "message",
+								}
+							: {
+									role: "assistant",
+									content: [{ type: "output_text", text: joinedText }],
+									type: "message",
+									id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+									status: "completed",
+								}
+					);
 				}
 
 				if (joinedThinking) {
-					out.push({
-						summary: [{ type: "summary_text", text: joinedThinking }],
-						type: "reasoning",
-						id: `tk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-						status: "completed",
-					});
+					out.push(
+						this._harnessInput
+							? {
+									summary: [{ type: "summary_text", text: joinedThinking }],
+									type: "reasoning",
+								}
+							: {
+									summary: [{ type: "summary_text", text: joinedThinking }],
+									type: "reasoning",
+									id: `tk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+									status: "completed",
+								}
+					);
 				}
 
 				for (const tc of toolCalls) {
-					out.push({
-						type: "function_call",
-						id: `fc_${tc.id}`,
-						call_id: tc.id,
-						name: tc.function.name,
-						arguments: tc.function.arguments,
-						status: "completed",
-					});
+					out.push(
+						this._harnessInput
+							? {
+									type: "function_call",
+									call_id: tc.id,
+									name: tc.function.name,
+									arguments: tc.function.arguments,
+								}
+							: {
+									type: "function_call",
+									id: `fc_${tc.id}`,
+									call_id: tc.id,
+									name: tc.function.name,
+									arguments: tc.function.arguments,
+									status: "completed",
+								}
+					);
 				}
 			}
 
@@ -160,13 +227,21 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				if (!tr.callId) {
 					continue;
 				}
-				out.push({
-					type: "function_call_output",
-					call_id: tr.callId,
-					output: tr.content || "",
-					id: `fco_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-					status: "completed",
-				});
+				out.push(
+					this._harnessInput
+						? {
+								type: "function_call_output",
+								call_id: tr.callId,
+								output: tr.content || "",
+							}
+						: {
+								type: "function_call_output",
+								call_id: tr.callId,
+								output: tr.content || "",
+								id: `fco_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+								status: "completed",
+							}
+				);
 			}
 
 			// user message
@@ -180,12 +255,20 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 					contentArray.push({ type: "input_image", image_url: dataUrl, detail: "auto" });
 				}
 				if (contentArray.length > 0) {
-					out.push({
-						role: "user",
-						content: contentArray,
-						type: "message",
-						status: "completed",
-					});
+					out.push(
+						this._harnessInput
+							? {
+									role: "user",
+									content: contentArray,
+									type: "message",
+								}
+							: {
+									role: "user",
+									content: contentArray,
+									type: "message",
+									status: "completed",
+								}
+					);
 				}
 			}
 
@@ -195,8 +278,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			}
 		}
 
-		// the last user message may be incomplete
-		if (out.length > 0) {
+		if (!this._harnessInput && out.length > 0) {
 			const lastItem = out[out.length - 1];
 			if (lastItem && typeof lastItem === "object" && "type" in lastItem) {
 				const item = lastItem as unknown as Record<string, unknown>;
@@ -206,6 +288,23 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			}
 		}
 		return out;
+	}
+
+	convertMessagesAfterLastAssistant(
+		messages: readonly LanguageModelChatRequestMessage[],
+		modelConfig: { includeReasoningInRequest: boolean }
+	): ResponsesInputItem[] {
+		let lastAssistant = -1;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].role === vscode.LanguageModelChatMessageRole.Assistant) {
+				lastAssistant = i;
+				break;
+			}
+		}
+		if (lastAssistant < 0 || lastAssistant >= messages.length - 1) {
+			return [];
+		}
+		return this.convertMessages(messages.slice(lastAssistant + 1), modelConfig);
 	}
 
 	prepareRequestBody(
@@ -251,6 +350,10 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				...existing,
 				effort: um.reasoning_effort,
 			};
+		}
+
+		if (this._includeEncryptedReasoning && rb.include === undefined) {
+			rb.include = ["reasoning.encrypted_content"];
 		}
 
 		// thinking (Volcengine provider)
@@ -304,6 +407,8 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 		token: CancellationToken
 	): Promise<void> {
 		this._responseId = null;
+		this._responseCompleted = false;
+		this._capturedReasoningItems = [];
 		const modelId = this._modelId;
 		logger.debug("responses.stream.start", { modelId });
 		const reader = responseBody.getReader();
@@ -340,6 +445,9 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 						const parsed = JSON.parse(data) as Record<string, unknown>;
 						await this.processEvent(parsed, progress);
 					} catch (e) {
+						if (e instanceof Error && e.message.startsWith("Responses API error:")) {
+							throw e;
+						}
 						console.error("[OpenAI-Responses Provider] Failed to parse SSE chunk:", e, "data:", data);
 						logger.error("responses.stream.chunk.error", {
 							modelId,
@@ -551,7 +659,21 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			case "response.output_item.added":
 			case "response.output_item.done": {
 				const item = event.item && typeof event.item === "object" ? (event.item as Record<string, unknown>) : null;
-				if (!item || item.type !== "function_call") {
+				if (!item) {
+					return;
+				}
+				if (item.type === "reasoning") {
+					if (this._includeEncryptedReasoning) {
+						const replay = normalizeResponsesReasoningItem(item);
+						if (replay) {
+							this._capturedReasoningItems.push(replay);
+							progress.report(createResponsesReasoningPart(replay));
+						}
+					}
+					this.reportEndThinking(progress);
+					return;
+				}
+				if (item.type !== "function_call") {
 					return;
 				}
 
@@ -611,6 +733,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				// End of message - ensure thinking is ended and flush all tool calls
 				await this.flushToolCallBuffers(progress, false);
 				this.reportEndThinking(progress);
+				this._responseCompleted = true;
 				// Capture usage from the completed event
 				const usage = event.usage ?? (event.response as Record<string, unknown>)?.usage;
 				if (usage && typeof usage === "object") {
@@ -625,6 +748,11 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 					};
 					logger.debug("usage.capture", { modelId: this._modelId, usage: this._usage });
 				}
+				return;
+			}
+			case "response.incomplete":
+			case "response.failed": {
+				this._responseCompleted = false;
 				return;
 			}
 		}
