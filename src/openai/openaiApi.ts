@@ -489,7 +489,8 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		dispatchFetch?: typeof fetch
 	): AsyncGenerator<{ type: "text"; text: string }> {
 		// Combine system prompt with first user message or as separate system message
 		const openaiMessages = [...messages];
@@ -509,7 +510,8 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 		const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
 
 		// Make the API request
-		const response = await fetch(url, {
+		const doFetch = dispatchFetch ?? fetch;
+		const response = await doFetch(url, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(requestBody),

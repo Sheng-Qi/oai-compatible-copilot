@@ -29,7 +29,16 @@ import { CommonApi } from "./commonApi";
 import { createResponsesReasoningPart } from "./openai/responsesState";
 import { createModelFetch } from "./httpClient";
 import { logger } from "./logger";
+import {
+	PROXY_PROBE_DEFAULT_TIMEOUT_MS,
+	normalizeProxyProfiles,
+	resolveProxyForModel,
+	selectProxyEntry,
+} from "./proxyConfig";
 import { isUpstreamProviderFailureError, registerSessionId, resolveSessionId, rotateSessionId } from "./sessionRouting";
+
+/** Label used in logs when no proxy is applied. */
+const DIRECT_PROXY_LABEL = "direct";
 
 /**
  * VS Code Chat provider backed by custom OpenAI-compatible endpoints.
@@ -230,7 +239,35 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 			});
 
 			const requestTimeoutMs = um?.timeoutMs && um.timeoutMs > 0 ? um.timeoutMs : 0;
-			const useLongLivedFetch = Boolean(um?.proxy) || requestTimeoutMs > 0;
+
+			// Resolve the effective proxy for this request (per-model spec wins over the
+			// global spec; both support URLs, profile names and failover lists).
+			const proxyProfiles = normalizeProxyProfiles(config.get<unknown>("oaicopilot.proxies", []));
+			const proxyResolution = resolveProxyForModel(
+				um?.proxy,
+				config.get<string>("oaicopilot.proxy", ""),
+				proxyProfiles.profiles,
+				vscode.env.remoteName
+			);
+			for (const warning of [...proxyProfiles.warnings, ...proxyResolution.warnings]) {
+				logger.warn("proxy.warning", { modelId: model.id, warning });
+			}
+			const proxyProbeTimeoutMs = config.get<number>("oaicopilot.proxyProbeTimeoutMs", PROXY_PROBE_DEFAULT_TIMEOUT_MS);
+			const chosenProxy = await selectProxyEntry(proxyResolution.entries, proxyProbeTimeoutMs);
+			if (chosenProxy.probeFailures.length > 0) {
+				logger.warn("proxy.probeFailures", { modelId: model.id, failures: chosenProxy.probeFailures });
+			}
+			const chosenProxyLabel = chosenProxy.entry?.label ?? DIRECT_PROXY_LABEL;
+			const activeProxyRaw = chosenProxy.entry?.kind === "proxy" ? chosenProxy.entry.raw : "";
+			if (proxyResolution.entries.length > 0) {
+				logger.info("request.proxy", {
+					modelId: model.id,
+					candidates: proxyResolution.entries.map((e) => e.label),
+					chosen: chosenProxyLabel,
+				});
+			}
+
+			const useLongLivedFetch = Boolean(activeProxyRaw) || requestTimeoutMs > 0;
 			const controller = new AbortController();
 			const timeoutId =
 				requestTimeoutMs > 0
@@ -246,7 +283,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 				}
 			});
 			const dispatchFetch = useLongLivedFetch
-				? createModelFetch({ proxy: um?.proxy, timeoutMs: requestTimeoutMs || undefined })
+				? createModelFetch({ proxy: activeProxyRaw || undefined, timeoutMs: requestTimeoutMs || undefined })
 				: fetch;
 			const fetchInit = (headers: Record<string, string>, body: unknown): RequestInit => ({
 				method: "POST",
@@ -434,7 +471,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 						modelId: model.id,
 						opencodeSession: opencodeSessionEnabled,
 						usingPreviousResponseId: addedPreviousResponseId,
-						proxy: um?.proxy || "",
+						proxy: chosenProxyLabel,
 						timeoutMs: requestTimeoutMs,
 					});
 					logger.debug("request.body", { url, requestBody });

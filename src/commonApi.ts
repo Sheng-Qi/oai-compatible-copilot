@@ -103,6 +103,7 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 	 * @param messages The messages to send.
 	 * @param baseUrl The base URL for the API.
 	 * @param apiKey The API key to use.
+	 * @param dispatchFetch Optional fetch implementation honoring per-model/global proxy settings.
 	 * @returns An async iterable of text chunks.
 	 */
 	abstract createMessage(
@@ -110,7 +111,8 @@ export abstract class CommonApi<TMessage, TRequestBody> {
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		dispatchFetch?: typeof fetch
 	): AsyncGenerator<{ type: "text"; text: string }>;
 
 	/**

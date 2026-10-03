@@ -93,6 +93,47 @@ git push origin :refs/tags/v0.4.2-replay.1
 ]
 ```
 
+## 代理配置
+
+代理设置支持多个代理与环境感知的故障转移，本地窗口与 Remote-SSH 远程窗口可以共用同一份设置：
+
+- `oaicopilot.proxies`：命名代理配置表（`name` / `url` / `useIn`）。
+- `oaicopilot.proxy`：未设置自身代理的模型的默认代理。
+- `oaicopilot.models[].proxy`：模型专属代理。
+
+代理值（proxy）支持以下写法：
+
+1. 纯代理 URL：`http://127.0.0.1:2082` 或 `socks5h://127.0.0.1:1081`
+2. `oaicopilot.proxies` 中的配置名
+3. 逗号/空格分隔的故障转移列表：`primary, fallback, direct` —— 按顺序进行 TCP 探测，取第一个可达项（探测超时：`oaicopilot.proxyProbeTimeoutMs`，默认 2000ms，设为 `0` 禁用探测）
+4. 关键字 `direct` 强制直连
+
+解析优先级：
+
+1. `models[].proxy`（解析出至少一个候选时）
+2. `oaicopilot.proxy`
+3. 自动：第一个 `useIn` 匹配当前环境的配置
+4. 直连
+
+`useIn` 基于 `vscode.env.remoteName` 过滤：`"local"` 匹配本地窗口，`"remote"` 匹配任意远程窗口，其余值按前缀匹配 remoteName（例如 `"ssh"`、`"wsl"`）。省略则到处可用。
+
+### SSH Remote 示例
+
+```json
+"oaicopilot.proxies": [
+    { "name": "local", "url": "http://127.0.0.1:2082", "useIn": ["local"] },
+    { "name": "remote", "url": "socks5h://127.0.0.1:1081", "useIn": ["remote"] }
+],
+"oaicopilot.proxy": ""
+```
+
+设置了 `useIn` 之后，本地窗口自动使用 `http://127.0.0.1:2082`，远程扩展宿主自动使用 `socks5h://127.0.0.1:1081`，无需手动切换。也可以在用户设置里保留 `"oaicopilot.proxy": "local"`，然后在 Remote-SSH 的 `Remote [SSH: host]` 设置页里只为 `oaicopilot.proxy` 覆盖为其他值；远程（machine）设置优先于用户设置。
+
+注意事项：
+- 完整的 `oaicopilot.proxies` 列表放在用户设置里。数组类型的设置在不同作用域之间不会合并，所以每环境的差异只放在 `oaicopilot.proxy` 中。
+- 故障转移列表每次请求都会探测（结果缓存 60 秒）；单一候选不探测，保持原有快速路径。
+- Git 提交信息生成使用同样的代理解析。
+
 ## ✨ 配置界面
 
 本扩展提供可视化配置界面，方便管理全局设置、供应商和模型，无需手动编辑 JSON 文件。
@@ -489,6 +530,7 @@ VS Code Copilot 针对特定模型优化了系统提示词。[详细介绍](http
   - `type`：设为 'enabled' 开启思维链，'disabled' 关闭思维链
 - `reasoning_effort`：推理力度级别（OpenAI 推理配置）
 - `headers`：发送到此模型供应商的自定义 HTTP 请求头（如 `{"X-API-Version": "v1", "X-Custom-Header": "value"}`）。将与默认请求头（Authorization、Content-Type、User-Agent）合并
+- `proxy`：模型专属代理（可选）：代理 URL、`oaicopilot.proxies` 中的配置名、逗号/空格分隔的故障转移列表（`'primary, fallback, direct'`）或关键字 `direct`。为空时回退到全局 `oaicopilot.proxy`。
 - `extra`：额外请求体参数。
 - `include_reasoning_in_request`：是否在发送给 API 的 assistant 消息中包含 reasoning_content。支持 deepseek-v3.2 及类似模型。
 - `apiMode`：API 模式：'openai'（默认）对应 API（/chat/completions），'openai-responses' 对应 API（/responses），'ollama' 对应 API（/api/chat），'anthropic' 对应 API（/v1/messages），'gemini' 对应 API（/v1beta/models/{model}:streamGenerateContent?alt=sse）。

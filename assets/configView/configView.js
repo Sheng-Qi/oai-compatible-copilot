@@ -18,6 +18,8 @@ const baseUrlInput = document.getElementById("baseUrl");
 const apiKeyInput = document.getElementById("apiKey");
 const delayInput = document.getElementById("delay");
 const readFileLinesInput = document.getElementById("readFileLines");
+const proxySpecInput = document.getElementById("proxySpec");
+const proxyProfilesInput = document.getElementById("proxyProfiles");
 const retryEnabledInput = document.getElementById("retryEnabled");
 const maxAttemptsInput = document.getElementById("maxAttempts");
 const intervalMsInput = document.getElementById("intervalMs");
@@ -36,6 +38,7 @@ const modelProviderInput = document.getElementById("modelProvider");
 const modelDisplayNameInput = document.getElementById("modelDisplayName");
 const modelConfigIdInput = document.getElementById("modelConfigId");
 const modelBaseUrlInput = document.getElementById("modelBaseUrl");
+const modelProxyInput = document.getElementById("modelProxy");
 const modelFamilyInput = document.getElementById("modelFamily");
 const modelContextLengthInput = document.getElementById("modelContextLength");
 const modelMaxTokensInput = document.getElementById("modelMaxTokens");
@@ -95,6 +98,8 @@ document.getElementById("saveBase").addEventListener("click", () => {
 		apiKey: apiKeyInput.value,
 		delay: parseInt(delayInput.value) || 0,
 		readFileLines: parseInt(readFileLinesInput.value) || 0,
+		proxySpec: proxySpecInput.value,
+		proxyProfilesRaw: proxyProfilesInput.value,
 		retry: retry,
 		commitModel: commitModelInput.value,
 		commitLanguage: commitLanguageInput.value,
@@ -272,8 +277,19 @@ window.addEventListener("message", (event) => {
 
 	switch (message.type) {
 		case "init":
-			const { baseUrl, apiKey, delay, readFileLines, retry, commitModel, models, providerKeys, commitLanguage } =
-				message.payload;
+			const {
+				baseUrl,
+				apiKey,
+				delay,
+				readFileLines,
+				proxySpec,
+				proxyProfiles,
+				retry,
+				commitModel,
+				models,
+				providerKeys,
+				commitLanguage,
+			} = message.payload;
 			state.baseUrl = baseUrl;
 			state.apiKey = apiKey;
 			state.delay = delay || 0;
@@ -293,6 +309,8 @@ window.addEventListener("message", (event) => {
 			apiKeyInput.value = apiKey || "";
 			delayInput.value = state.delay;
 			readFileLinesInput.value = message.payload.readFileLines || 0;
+			proxySpecInput.value = proxySpec || "";
+			proxyProfilesInput.value = proxyProfiles ? JSON.stringify(proxyProfiles, null, 2) : "";
 			retryEnabledInput.checked = state.retry.enabled !== false;
 			maxAttemptsInput.value = state.retry.max_attempts || 3;
 			intervalMsInput.value = state.retry.interval_ms || 1000;
@@ -538,6 +556,7 @@ function resetModelForm() {
 	modelDisplayNameInput.value = "";
 	modelConfigIdInput.value = "";
 	modelBaseUrlInput.value = "";
+	modelProxyInput.value = "";
 	modelFamilyInput.value = "";
 	modelContextLengthInput.value = 128000;
 	modelMaxTokensInput.value = 4096;
@@ -586,6 +605,7 @@ function collectModelFormData() {
 		displayName: modelDisplayNameInput.value.trim() || undefined,
 		configId: modelConfigIdInput.value.trim() || undefined,
 		baseUrl: modelBaseUrlInput.value.trim() || undefined,
+		proxy: modelProxyInput.value.trim() || undefined,
 		family: modelFamilyInput.value.trim() || undefined,
 		context_length: modelContextLengthInput.value ? parseInt(modelContextLengthInput.value) : undefined,
 		max_tokens: modelMaxTokensInput.value ? parseInt(modelMaxTokensInput.value) : undefined,
@@ -895,6 +915,7 @@ function populateModelForm(model) {
 	modelDisplayNameInput.value = model.displayName || "";
 	modelConfigIdInput.value = model.configId || "";
 	modelBaseUrlInput.value = model.baseUrl || "";
+	modelProxyInput.value = model.proxy || "";
 	modelFamilyInput.value = model.family || "";
 	modelContextLengthInput.value = model.context_length || "";
 	modelMaxTokensInput.value = model.max_tokens || "";

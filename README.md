@@ -93,6 +93,47 @@ git push origin :refs/tags/v0.4.2-replay.1
 ]
 ```
 
+## Proxy Configuration
+
+Proxy settings support multiple proxies with environment-aware failover, so the same settings can work in both local windows and Remote-SSH windows:
+
+- `oaicopilot.proxies`: named proxy profiles (`name` / `url` / `useIn`).
+- `oaicopilot.proxy`: default proxy for models that do not define their own.
+- `oaicopilot.models[].proxy`: per-model proxy.
+
+A proxy value accepts:
+
+1. a plain proxy URL: `http://127.0.0.1:2082` or `socks5h://127.0.0.1:1081`
+2. a profile name from `oaicopilot.proxies`
+3. a comma/space-separated failover list: `primary, fallback, direct` — candidates are TCP-probed in order and the first reachable one wins (probe timeout: `oaicopilot.proxyProbeTimeoutMs`, default 2000ms, `0` disables probing)
+4. the keyword `direct` to force a direct connection
+
+Resolution order:
+
+1. `models[].proxy` (when it resolves to at least one candidate)
+2. `oaicopilot.proxy`
+3. auto: the first profile whose `useIn` matches the current environment
+4. direct connection
+
+`useIn` filters by `vscode.env.remoteName`: `"local"` matches non-remote windows, `"remote"` matches any remote window, and other values prefix-match the remoteName (e.g. `"ssh"`, `"wsl"`). Omit it to allow the profile everywhere.
+
+### SSH Remote Example
+
+```json
+"oaicopilot.proxies": [
+    { "name": "local", "url": "http://127.0.0.1:2082", "useIn": ["local"] },
+    { "name": "remote", "url": "socks5h://127.0.0.1:1081", "useIn": ["remote"] }
+],
+"oaicopilot.proxy": ""
+```
+
+With `useIn` tags, your local window automatically uses `http://127.0.0.1:2082` while the remote extension host uses `socks5h://127.0.0.1:1081` — no manual switching needed. Alternatively, keep `"oaicopilot.proxy": "local"` in user settings and set a different value for `oaicopilot.proxy` in the Remote-SSH `Remote [SSH: host]` settings tab; remote (machine) settings take precedence over user settings.
+
+Notes:
+- Keep the full `oaicopilot.proxies` list in user settings. Array settings do not merge across scopes, so put per-environment differences only in `oaicopilot.proxy`.
+- Failover lists are probed per request (results cached for 60s); single candidates skip probing entirely and keep the previous fast path.
+- Git commit message generation honors the same proxy resolution.
+
 ## ✨ Configuration UI
 
 The extension provides a visual configuration interface that makes it easy to manage global settings, providers, and models without editing JSON files manually.
@@ -489,6 +530,7 @@ All parameters support individual configuration for different models, providing 
   - `type`: Set to 'enabled' to enable thinking, 'disabled' to disable thinking
 - `reasoning_effort`: Reasoning effort level (OpenAI reasoning configuration)
 - `headers`: Custom HTTP headers to be sent with every request to this model's provider (e.g., `{"X-API-Version": "v1", "X-Custom-Header": "value"}`). These headers will be merged with the default headers (Authorization, Content-Type, User-Agent)
+- `proxy`: Optional per-model proxy: a proxy URL, a profile name from `oaicopilot.proxies`, a comma/space-separated failover list (`'primary, fallback, direct'`), or the keyword `direct`. Empty falls back to the global `oaicopilot.proxy` setting.
 - `extra`: Extra request body parameters.
 - `include_reasoning_in_request`: Whether to include reasoning_content in assistant messages sent to the API. Supports deepseek-v3.2 and similar models.
 - `apiMode`: API mode: 'openai' (Default) for API (/chat/completions), 'openai-responses' for API (/responses), 'ollama' for API (/api/chat), 'anthropic' for API (/v1/messages), 'gemini' for API (/v1beta/models/{model}:streamGenerateContent?alt=sse).

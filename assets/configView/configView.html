@@ -43,6 +43,33 @@
 				</div>
 			</div>
 			<div class="retry-config">
+				<h3>Proxy Configuration</h3>
+				<div class="row">
+					<div class="field">
+						<label for="proxySpec">Default Proxy</label>
+						<div class="field-description">
+							Default proxy for models without their own `proxy`: a proxy URL (http:// or socks5://), a profile name
+							from Proxy Profiles, a comma/space separated failover list ('primary, fallback, direct' - first reachable
+							wins), or 'direct'. Empty = auto (first profile matching this environment, else direct). In Remote-SSH
+							windows, override this setting per host in Remote settings.
+						</div>
+						<input id="proxySpec" type="text" placeholder="http://127.0.0.1:2082 or mysocks, fallback, direct" />
+					</div>
+					<div class="field">
+						<label for="proxyProfiles">Proxy Profiles (JSON)</label>
+						<div class="field-description">
+							Named proxies for reuse across models. `useIn` filters environments: ["local"], ["remote"], or a
+							RemoteName prefix like "ssh". Omit to allow everywhere.
+						</div>
+						<textarea
+							id="proxyProfiles"
+							rows="4"
+							placeholder='[{"name": "local", "url": "http://127.0.0.1:2082", "useIn": ["local"]}, {"name": "ssh", "url": "socks5h://127.0.0.1:1081", "useIn": ["remote"]}]'
+						></textarea>
+					</div>
+				</div>
+			</div>
+			<div class="retry-config">
 				<h3>Retry Configuration</h3>
 				<div class="row">
 					<div class="field">
@@ -325,6 +352,19 @@
 							</div>
 							<!-- Thinking Configuration -->
 							<div class="row">
+								<div class="field">
+									<label for="modelProxy">Proxy</label>
+									<div class="field-description">
+										Proxy URL, profile name from Proxy Profiles, or comma/space separated failover list (e.g. 'mysocks,
+										http://127.0.0.1:2082, direct'). Empty falls back to the global Default Proxy.
+									</div>
+									<input
+										id="modelProxy"
+										type="text"
+										class="model-input"
+										placeholder="e.g. mysocks or http://127.0.0.1:2082"
+									/>
+								</div>
 								<div class="field">
 									<label for="modelIncludeReasoning">Include Reasoning</label>
 									<div class="field-description">Include reasoning_content in assistant messages sent to the API.</div>

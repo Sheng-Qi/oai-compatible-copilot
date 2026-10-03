@@ -7,6 +7,13 @@ import { AnthropicApi } from "../anthropic/anthropicApi";
 import { OllamaApi } from "../ollama/ollamaApi";
 import { normalizeUserModels } from "../utils";
 import { logger } from "../logger";
+import { createModelFetch } from "../httpClient";
+import {
+	PROXY_PROBE_DEFAULT_TIMEOUT_MS,
+	normalizeProxyProfiles,
+	resolveProxyForModel,
+	selectProxyEntry,
+} from "../proxyConfig";
 import type { HFModelItem } from "../types";
 
 /**
@@ -224,7 +231,27 @@ async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff
 		}
 
 		commitGenerationAbortController = new AbortController();
-		const stream = apiInstance.createMessage(selectedModel, systemPrompt, messages, baseUrl, apiKey);
+
+		// Resolve proxy for commit generation (same rules as chat requests).
+		const proxyProfiles = normalizeProxyProfiles(config.get<unknown>("oaicopilot.proxies", []));
+		const proxyResolution = resolveProxyForModel(
+			selectedModel.proxy,
+			config.get<string>("oaicopilot.proxy", ""),
+			proxyProfiles.profiles,
+			vscode.env.remoteName
+		);
+		for (const warning of [...proxyProfiles.warnings, ...proxyResolution.warnings]) {
+			logger.warn("commit.proxy.warning", { modelId, warning });
+		}
+		const proxyProbeTimeoutMs = config.get<number>("oaicopilot.proxyProbeTimeoutMs", PROXY_PROBE_DEFAULT_TIMEOUT_MS);
+		const chosenProxy = await selectProxyEntry(proxyResolution.entries, proxyProbeTimeoutMs);
+		if (chosenProxy.probeFailures.length > 0) {
+			logger.warn("commit.proxy.probeFailures", { modelId, failures: chosenProxy.probeFailures });
+		}
+		const dispatchFetch =
+			chosenProxy.entry?.kind === "proxy" ? createModelFetch({ proxy: chosenProxy.entry.raw }) : fetch;
+
+		const stream = apiInstance.createMessage(selectedModel, systemPrompt, messages, baseUrl, apiKey, dispatchFetch);
 
 		let response = "";
 		for await (const chunk of stream) {

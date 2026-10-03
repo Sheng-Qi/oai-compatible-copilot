@@ -25,7 +25,7 @@
 		"type": "git",
 		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 	},
-	"version": "0.4.5",
+	"version": "0.4.6",
 	"engines": {
 		"vscode": "^1.120.0"
 	},
@@ -127,6 +127,46 @@
 					"type": "string",
 					"default": "https://router.huggingface.co/v1",
 					"description": "The base URL for the Openai Compatible Inference API. Default value is Hugging Face."
+				},
+				"oaicopilot.proxies": {
+					"type": "array",
+					"default": [],
+					"items": {
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"description": "Unique profile name referenced by proxy specs."
+							},
+							"url": {
+								"type": "string",
+								"description": "HTTP or SOCKS proxy URL (e.g. http://127.0.0.1:2082, socks5h://127.0.0.1:1081). Empty means direct connect."
+							},
+							"useIn": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								},
+								"description": "Optional environment filter. 'local' matches non-remote windows, 'remote' matches any remote window, other values prefix-match vscode.env.remoteName (e.g. 'ssh', 'wsl'). Omit to allow everywhere."
+							}
+						},
+						"required": [
+							"name",
+							"url"
+						]
+					},
+					"description": "Named proxy profiles. Proxy specs (models[].proxy or oaicopilot.proxy) may reference a profile by name, list several names/URLs as failover candidates (first reachable wins), and useIn restricts a profile to local or remote (SSH) environments."
+				},
+				"oaicopilot.proxy": {
+					"type": "string",
+					"default": "",
+					"description": "Default proxy for models that do not define their own: a proxy URL, a profile name from oaicopilot.proxies, a comma/space-separated failover list like 'primary, fallback, direct' (first reachable wins), or 'direct'. Empty means auto (first profile whose useIn matches this environment, else direct). Can be overridden per environment in Remote-SSH machine settings."
+				},
+				"oaicopilot.proxyProbeTimeoutMs": {
+					"type": "number",
+					"default": 2000,
+					"minimum": 0,
+					"description": "TCP connect timeout in milliseconds used when probing failover proxy candidates. 0 disables probing (the first listed candidate always wins)."
 				},
 				"oaicopilot.models": {
 					"type": "array",
@@ -332,7 +372,7 @@
 							"proxy": {
 								"type": "string",
 								"default": "",
-								"description": "Optional per-model HTTP or SOCKS proxy (e.g. http://127.0.0.1:2082 or socks5://127.0.0.1:1082). Empty means direct connect and does not affect other models."
+								"description": "Optional per-model proxy: an HTTP/SOCKS URL (http://127.0.0.1:2082, socks5://127.0.0.1:1082), a profile name from oaicopilot.proxies, a comma/space-separated failover list ('primary, fallback, direct' - first reachable wins), or 'direct'. Empty falls back to global oaicopilot.proxy."
 							},
 							"timeoutMs": {
 								"type": "number",

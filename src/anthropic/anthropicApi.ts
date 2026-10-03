@@ -591,7 +591,8 @@ export class AnthropicApi extends CommonApi<AnthropicMessage, AnthropicRequestBo
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		dispatchFetch?: typeof fetch
 	): AsyncGenerator<{ type: "text"; text: string }> {
 		// For Anthropic, we need to separate system prompt from messages
 		const anthropicMessages: AnthropicMessage[] = messages.map((m) => ({
@@ -618,7 +619,8 @@ export class AnthropicApi extends CommonApi<AnthropicMessage, AnthropicRequestBo
 			: `${normalizedBaseUrl}/v1/messages`;
 
 		// Make the API request
-		const response = await fetch(url, {
+		const doFetch = dispatchFetch ?? fetch;
+		const response = await doFetch(url, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(requestBody),

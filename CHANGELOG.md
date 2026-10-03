@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.6 (2026-10-03)
+
+- Feat(proxy): Multi-proxy support. New named proxy registry `oaicopilot.proxies` (`name`/`url`/`useIn`), global default `oaicopilot.proxy`, and probe-based failover lists (`proxyProbeTimeoutMs`, default 2000ms). Proxy values accept URLs, profile names, failover lists (`a, b, direct`) or `direct`; profiles support `useIn` environment filters (`local`/`remote`/remoteName prefixes) for automatic local vs Remote-SSH selection. The configuration UI exposes these fields and commit message generation honors them too.
+
 ## 0.4.5 (2026-09-29)
 
 - Feat: per-model `proxy`/`timeoutMs` independent of opencode (undici tunnel, no forced H2, dispatcher reuse).

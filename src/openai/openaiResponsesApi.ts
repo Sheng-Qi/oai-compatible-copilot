@@ -808,7 +808,8 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		dispatchFetch?: typeof fetch
 	): AsyncGenerator<{ type: "text"; text: string }> {
 		// Convert to Responses API format
 		const input: ResponsesInputItem[] = [];
@@ -851,7 +852,8 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 		const url = `${baseUrl.replace(/\/+$/, "")}/responses`;
 
 		// Make the API request
-		const response = await fetch(url, {
+		const doFetch = dispatchFetch ?? fetch;
+		const response = await doFetch(url, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(requestBody),

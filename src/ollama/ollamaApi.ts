@@ -283,7 +283,8 @@ export class OllamaApi extends CommonApi<OllamaMessage, OllamaRequestBody> {
 		systemPrompt: string,
 		messages: { role: string; content: string }[],
 		baseUrl: string,
-		apiKey: string
+		apiKey: string,
+		dispatchFetch?: typeof fetch
 	): AsyncGenerator<{ type: "text"; text: string }> {
 		// Convert to Ollama message format
 		const ollamaMessages: OllamaMessage[] = [];
@@ -313,7 +314,8 @@ export class OllamaApi extends CommonApi<OllamaMessage, OllamaRequestBody> {
 		const url = `${baseUrl.replace(/\/+$/, "")}/api/chat`;
 
 		// Make the API request
-		const response = await fetch(url, {
+		const doFetch = dispatchFetch ?? fetch;
+		const response = await doFetch(url, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(requestBody),

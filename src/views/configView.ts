@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { HFApiMode, HFModelItem } from "../types";
+import { normalizeProxyProfiles, parseProxyProfilesJson, type ProxyProfile } from "../proxyConfig";
 import { normalizeUserModels, parseModelId } from "../utils";
 import { fetchModels } from "../provideModel";
 import { VersionManager } from "../versionManager";
@@ -9,6 +10,8 @@ interface InitPayload {
 	apiKey: string;
 	delay: number;
 	readFileLines: number;
+	proxySpec: string;
+	proxyProfiles: ProxyProfile[];
 	retry: {
 		enabled?: boolean;
 		max_attempts?: number;
@@ -27,6 +30,8 @@ interface ExportConfig {
 	baseUrl: string;
 	apiKey: string;
 	delay: number;
+	proxySpec: string;
+	proxyProfiles: ProxyProfile[];
 	retry: {
 		enabled?: boolean;
 		max_attempts?: number;
@@ -48,6 +53,8 @@ type IncomingMessage =
 			apiKey: string;
 			delay: number;
 			readFileLines: number;
+			proxySpec: string;
+			proxyProfilesRaw: string;
 			retry: { enabled?: boolean; max_attempts?: number; interval_ms?: number; status_codes?: number[] };
 			commitModel: string;
 			commitLanguage: string;
@@ -174,6 +181,8 @@ export class ConfigViewPanel {
 					message.apiKey,
 					message.delay,
 					message.readFileLines,
+					message.proxySpec,
+					message.proxyProfilesRaw,
 					message.retry,
 					message.commitModel,
 					message.commitLanguage
@@ -278,6 +287,8 @@ export class ConfigViewPanel {
 			max_attempts: 3,
 			interval_ms: 1000,
 		});
+		const proxySpec = config.get<string>("oaicopilot.proxy", "");
+		const proxyProfiles = normalizeProxyProfiles(config.get<unknown>("oaicopilot.proxies", [])).profiles;
 
 		const foundModel = models.find((model) => model.useForCommitGeneration === true);
 		const commitModel = foundModel ? `${foundModel.id}${foundModel.configId ? "::" + foundModel.configId : ""}` : "";
@@ -288,6 +299,8 @@ export class ConfigViewPanel {
 			apiKey,
 			delay,
 			readFileLines,
+			proxySpec,
+			proxyProfiles,
 			retry,
 			commitModel,
 			commitLanguage,
@@ -302,6 +315,8 @@ export class ConfigViewPanel {
 		rawApiKey: string,
 		delay: number,
 		readFileLines: number,
+		rawProxySpec: string,
+		rawProxyProfiles: string,
 		retry: { enabled?: boolean; max_attempts?: number; interval_ms?: number; status_codes?: number[] },
 		commitModel: string,
 		commitLanguage: string
@@ -309,6 +324,17 @@ export class ConfigViewPanel {
 		const baseUrl = rawBaseUrl.trim();
 		const apiKey = rawApiKey.trim();
 		const config = vscode.workspace.getConfiguration();
+
+		// Validate proxy profiles before touching any setting so a broken JSON aborts cleanly.
+		const proxyProfiles = parseProxyProfilesJson(rawProxyProfiles);
+		if (!proxyProfiles.ok) {
+			vscode.window.showErrorMessage(proxyProfiles.error);
+			return;
+		}
+
+		const proxySpec = rawProxySpec.trim();
+		await config.update("oaicopilot.proxy", proxySpec, vscode.ConfigurationTarget.Global);
+		await config.update("oaicopilot.proxies", proxyProfiles.value, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.baseUrl", baseUrl, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.delay", delay, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.readFileLines", readFileLines, vscode.ConfigurationTarget.Global);
@@ -575,6 +601,8 @@ export class ConfigViewPanel {
 			const commitLanguage = config.get<string>("oaicopilot.commitLanguage", "English");
 			const readFileLines = config.get<number>("oaicopilot.readFileLines", 0);
 			const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
+			const proxySpec = config.get<string>("oaicopilot.proxy", "");
+			const proxyProfiles = normalizeProxyProfiles(config.get<unknown>("oaicopilot.proxies", [])).profiles;
 
 			const foundModel = models.find((model) => model.useForCommitGeneration === true);
 			const commitModel = foundModel ? `${foundModel.id}${foundModel.configId ? "::" + foundModel.configId : ""}` : "";
@@ -595,6 +623,8 @@ export class ConfigViewPanel {
 				baseUrl,
 				apiKey,
 				delay,
+				proxySpec,
+				proxyProfiles,
 				retry,
 				commitLanguage,
 				commitModel,
@@ -655,6 +685,16 @@ export class ConfigViewPanel {
 			await config.update("oaicopilot.retry", importData.retry, vscode.ConfigurationTarget.Global);
 			await config.update("oaicopilot.readFileLines", importData.readFileLines, vscode.ConfigurationTarget.Global);
 			await config.update("oaicopilot.commitLanguage", importData.commitLanguage, vscode.ConfigurationTarget.Global);
+			await config.update(
+				"oaicopilot.proxy",
+				typeof importData.proxySpec === "string" ? importData.proxySpec : "",
+				vscode.ConfigurationTarget.Global
+			);
+			await config.update(
+				"oaicopilot.proxies",
+				Array.isArray(importData.proxyProfiles) ? importData.proxyProfiles : [],
+				vscode.ConfigurationTarget.Global
+			);
 
 			if (importData.apiKey) {
 				await this.secrets.store("oaicopilot.apiKey", importData.apiKey);
