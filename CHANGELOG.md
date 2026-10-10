@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.7 (2026-10-10)
+
+- Feat(agentHost): Agents window / Copilot harness support via the built-in BYOK bridge. Extension models (non-`copilot` vendor) are auto-flagged BYOK by the host, so no code change to the request path was needed; this release adds `custom-oaicopilot.enableAgentHost` (sets `chat.agentHost.byokModels.enabled` + re-publishes models), `custom-oaicopilot.checkAgentHost` diagnostics, and `onDidChangeLanguageModelChatInformation` re-emit on `oaicopilot.models`/`oaicopilot.baseUrl` changes so new models appear in Agent Host sessions without a reload. Cloud (remote coding agent) sessions still cannot use local keys.
+
 ## 0.4.6 (2026-10-03)
 
 - Feat(proxy): Multi-proxy support. New named proxy registry `oaicopilot.proxies` (`name`/`url`/`useIn`), global default `oaicopilot.proxy`, and probe-based failover lists (`proxyProbeTimeoutMs`, default 2000ms). Proxy values accept URLs, profile names, failover lists (`a, b, direct`) or `direct`; profiles support `useIn` environment filters (`local`/`remote`/remoteName prefixes) for automatic local vs Remote-SSH selection. The configuration UI exposes these fields and commit message generation honors them too.

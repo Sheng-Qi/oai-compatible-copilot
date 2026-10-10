@@ -63,6 +63,15 @@ git push origin :refs/tags/v0.4.2-replay.1
 - **Git 集成**：直接从源代码管理生成提交信息
 - **导入/导出**：轻松分享和备份配置
 - **工具优化**：优化 agent `read_file` 工具处理，避免对大文件读取小片段。
+- **Agents 窗口支持**：一键启用（`CustomOAICopilot: Enable Agents Window (Agent Host) Support`）经内置 BYOK 桥接把已配置模型发布到新 Agents 窗口 / Copilot harness（`chat.agentHost.byokModels.enabled`）；模型列表变更会自动重新发布，无需重载窗口。
+
+## Agents 窗口（新 Copilot 模式）
+
+新 Agents 窗口默认 `Session Target = Copilot`，运行在 Agent Host 独立进程中，**不会**直接调用第三方 `languageModelChatProviders`，而是经 BYOK 桥接复用——VS Code 会自动把非 `copilot` vendor 标记为 BYOK，无需逐模型配置：
+
+1. 运行 `CustomOAICopilot: Enable Agents Window (Agent Host) Support`（打开 `chat.agentHost.byokModels.enabled` 并重新发布模型），或运行 `CustomOAICopilot: Check Agents Window (Agent Host) Readiness` 做诊断。
+2. 在 Agents 窗口 / Chat 视图保持 `Session Target = Copilot`，在模型选择器里选 `custom-oaicopilot` 的模型；也可以切到 `Session Target = Local` 像以前一样直连本扩展。
+3. Cloud（远端 coding agent / GitHub 托管）会话无法使用本地 Key，第三方模型请用本地 Agent Host 或 `Local` harness。
 
 ## 环境要求
 - VS Code 1.104.0 或更高版本。

@@ -47,10 +47,42 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 	/** Track last request completion time for delay calculation. */
 	private _lastRequestTime: number | null = null;
 
+	private readonly _onDidChangeLanguageModelChatInformation = new vscode.EventEmitter<void>();
+	/**
+	 * Fired when `oaicopilot.models` (or related endpoint settings) change so the
+	 * workbench — including the Agent Host BYOK bridge backing the Agents window /
+	 * Copilot harness — re-enumerates this vendor's models without a reload.
+	 */
+	readonly onDidChangeLanguageModelChatInformation: vscode.Event<void> =
+		this._onDidChangeLanguageModelChatInformation.event;
+
 	private readonly _geminiToolCallMetaByCallId = new Map<string, GeminiToolCallMeta>();
 	private readonly _openaiResponsesPreviousResponseIdUnsupportedBaseUrls = new Set<string>();
 
 	static readonly OPENAI_RESPONSES_STATEFUL_MARKER_MIME = "application/vnd.custom-oaicopilot.stateful-marker";
+
+	/**
+	 * Notify the workbench that this vendor's model list changed.
+	 * The Agent Host BYOK bridge debounces `onDidChangeLanguageModels`, so a
+	 * single fire per config save is enough for Agents-window sessions to pick
+	 * up added/removed/renamed models without a window reload.
+	 */
+	public notifyModelsChanged(): void {
+		try {
+			this._onDidChangeLanguageModelChatInformation.fire();
+		} catch (e) {
+			console.error("[Custom OAI Provider] notifyModelsChanged failed", e);
+		}
+	}
+
+	/** Release the model-change emitter. */
+	public dispose(): void {
+		try {
+			this._onDidChangeLanguageModelChatInformation.dispose();
+		} catch {
+			/* ignore */
+		}
+	}
 
 	/**
 	 * Create a provider using the given secret storage for the API key.

@@ -63,6 +63,15 @@ git push origin :refs/tags/v0.4.2-replay.1
 - **Git integration**: Generate commit messages directly from source control
 - **Import/export**: Easily share and backup configurations
 - **Tools optimization**: Optimize agent `read_file` tool handling, avoid to read small chunks for large file.
+- **Agents window support**: One-click enable (`CustomOAICopilot: Enable Agents Window (Agent Host) Support`) publishes configured models to the new Agents window / Copilot harness via the built-in BYOK bridge (`chat.agentHost.byokModels.enabled`); model list changes re-publish without reload.
+
+## Agents Window (New Copilot Mode)
+
+The new Agents window defaults to `Session Target = Copilot`, which runs in the Agent Host process and does **not** call third-party `languageModelChatProviders` directly. It reuses them through the BYOK bridge instead — VS Code auto-flags non-`copilot` vendors as BYOK, so no per-model flag is needed:
+
+1. Run `CustomOAICopilot: Enable Agents Window (Agent Host) Support` (sets `chat.agentHost.byokModels.enabled=true` and re-publishes models), or run `CustomOAICopilot: Check Agents Window (Agent Host) Readiness` for diagnostics.
+2. In the Agents window / Chat view, keep `Session Target = Copilot` and pick your `custom-oaicopilot` model from the model picker. Alternatively switch `Session Target = Local` to call this extension directly as before.
+3. Cloud (remote coding agent / GitHub-hosted) sessions cannot use local keys — use local Agent Host or `Local` harness for third-party models.
 
 ## Requirements
 - VS Code 1.104.0 or higher.

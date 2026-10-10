@@ -25,7 +25,7 @@
 		"type": "git",
 		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 	},
-	"version": "0.4.6",
+	"version": "0.4.7",
 	"engines": {
 		"vscode": "^1.120.0"
 	},
@@ -70,6 +70,16 @@
 				"command": "custom-oaicopilot.openConfig",
 				"category": "CustomOAICopilot",
 				"title": "Open Configuration UI"
+			},
+			{
+				"command": "custom-oaicopilot.enableAgentHost",
+				"category": "CustomOAICopilot",
+				"title": "Enable Agents Window (Agent Host) Support"
+			},
+			{
+				"command": "custom-oaicopilot.checkAgentHost",
+				"category": "CustomOAICopilot",
+				"title": "Check Agents Window (Agent Host) Readiness"
 			},
 			{
 				"command": "custom-oaicopilot.generateGitCommitMessage",
