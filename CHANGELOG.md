@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.4.8 (2026-11-03)
+
+- Chore(agentHost): drop the `custom-oaicopilot.enableAgentHost` / `custom-oaicopilot.checkAgentHost` commands. `chat.agentHost.byokModels.enabled` is enabled by default in current VS Code (only an explicit `false` turns it off) and the host auto-flags non-`copilot` vendors as BYOK, so the commands were no-ops that wrongly implied setup was required.
+- Keep `onDidChangeLanguageModelChatInformation` re-emit on `oaicopilot.models` / `oaicopilot.baseUrl` changes so the model picker and Agents window re-enumerate models without a window reload.
+
 ## 0.4.7 (2026-10-10)
 
 - Feat(agentHost): Agents window / Copilot harness support via the built-in BYOK bridge. Extension models (non-`copilot` vendor) are auto-flagged BYOK by the host, so no code change to the request path was needed; this release adds `custom-oaicopilot.enableAgentHost` (sets `chat.agentHost.byokModels.enabled` + re-publishes models), `custom-oaicopilot.checkAgentHost` diagnostics, and `onDidChangeLanguageModelChatInformation` re-emit on `oaicopilot.models`/`oaicopilot.baseUrl` changes so new models appear in Agent Host sessions without a reload. Cloud (remote coding agent) sessions still cannot use local keys.

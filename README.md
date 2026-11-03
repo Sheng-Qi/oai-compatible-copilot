@@ -63,14 +63,14 @@ git push origin :refs/tags/v0.4.2-replay.1
 - **Git integration**: Generate commit messages directly from source control
 - **Import/export**: Easily share and backup configurations
 - **Tools optimization**: Optimize agent `read_file` tool handling, avoid to read small chunks for large file.
-- **Agents window support**: One-click enable (`CustomOAICopilot: Enable Agents Window (Agent Host) Support`) publishes configured models to the new Agents window / Copilot harness via the built-in BYOK bridge (`chat.agentHost.byokModels.enabled`); model list changes re-publish without reload.
+- **Agents window support**: Configured models are published to the Agents window / Copilot harness through VS Code's built-in BYOK bridge (enabled by default); model list changes re-publish without a reload.
 
 ## Agents Window (New Copilot Mode)
 
-The new Agents window defaults to `Session Target = Copilot`, which runs in the Agent Host process and does **not** call third-party `languageModelChatProviders` directly. It reuses them through the BYOK bridge instead — VS Code auto-flags non-`copilot` vendors as BYOK, so no per-model flag is needed:
+The new Agents window defaults to `Session Target = Copilot`, which runs in the Agent Host process and does **not** call third-party `languageModelChatProviders` directly. It reuses them through the BYOK bridge instead — VS Code auto-flags non-`copilot` vendors as BYOK and `chat.agentHost.byokModels.enabled` defaults to on, so no per-model flag or setup command is needed:
 
-1. Run `CustomOAICopilot: Enable Agents Window (Agent Host) Support` (sets `chat.agentHost.byokModels.enabled=true` and re-publishes models), or run `CustomOAICopilot: Check Agents Window (Agent Host) Readiness` for diagnostics.
-2. In the Agents window / Chat view, keep `Session Target = Copilot` and pick your `custom-oaicopilot` model from the model picker. Alternatively switch `Session Target = Local` to call this extension directly as before.
+1. In the Agents window / Chat view, keep `Session Target = Copilot` and pick your `custom-oaicopilot` model from the model picker. Alternatively switch `Session Target = Local` to call this extension directly as before.
+2. If the models do not show up, check that `chat.agentHost.byokModels.enabled` has not been set to `false` and that `oaicopilot.models` is configured. Editing the model list re-publishes models without a window reload.
 3. Cloud (remote coding agent / GitHub-hosted) sessions cannot use local keys — use local Agent Host or `Local` harness for third-party models.
 
 ## Requirements

@@ -8,7 +8,6 @@ import { normalizeUserModels } from "./utils";
 import { initSessionRouting } from "./sessionRouting";
 import { abortCommitGeneration, generateCommitMsg } from "./gitCommit/commitMessageGenerator";
 import { TokenizerManager } from "./tokenizer/tokenizerManager";
-import { AGENT_HOST_BYOK_DOC_URL, checkAgentHostReadiness, setAgentHostByokEnabled } from "./agentHost";
 
 export function activate(context: vscode.ExtensionContext) {
 	// Initialize logger
@@ -24,73 +23,14 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register the custom provider under the vendor id used in package.json
 	vscode.lm.registerLanguageModelChatProvider("custom-oaicopilot", provider);
 
-	// Re-publish this vendor's models when endpoint settings change so the Agent
-	// Host BYOK bridge (Agents window / Copilot harness, `chat.agentHost.byokModels.enabled`)
-	// re-enumerates them without a window reload.
+	// Re-publish this vendor's models when endpoint settings change so consumers
+	// (model picker, Agents window / Copilot harness via the built-in BYOK bridge)
+	// re-enumerate them without a window reload.
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (
-				e.affectsConfiguration("oaicopilot.models") ||
-				e.affectsConfiguration("oaicopilot.baseUrl") ||
-				e.affectsConfiguration("chat.agentHost.byokModels.enabled")
-			) {
+			if (e.affectsConfiguration("oaicopilot.models") || e.affectsConfiguration("oaicopilot.baseUrl")) {
 				provider.notifyModelsChanged();
 			}
-		})
-	);
-
-	context.subscriptions.push(
-		vscode.commands.registerCommand("custom-oaicopilot.enableAgentHost", async () => {
-			const readiness = checkAgentHostReadiness();
-			if (!readiness.hasModels) {
-				const openConfig = "Open Configuration UI";
-				const choice = await vscode.window.showWarningMessage(
-					"No models configured in oaicopilot.models. Configure models first, then enable Agent Host support.",
-					openConfig
-				);
-				if (choice === openConfig) {
-					await vscode.commands.executeCommand("custom-oaicopilot.openConfig");
-				}
-				return;
-			}
-			await setAgentHostByokEnabled(true);
-			provider.notifyModelsChanged();
-			const openModels = "Manage Language Models";
-			const choice = await vscode.window.showInformationMessage(
-				`Agent Host support enabled: ${readiness.modelCount} model(s) published via the BYOK bridge (chat.agentHost.byokModels.enabled). Pick them in the Agents window / Chat model picker.`,
-				openModels
-			);
-			if (choice === openModels) {
-				await vscode.commands.executeCommand("workbench.action.chat.manageLanguageModels");
-			}
-			logger.info("agentHost.enabled", { modelCount: readiness.modelCount });
-		})
-	);
-
-	context.subscriptions.push(
-		vscode.commands.registerCommand("custom-oaicopilot.checkAgentHost", async () => {
-			const readiness = checkAgentHostReadiness();
-			if (readiness.issues.length === 0) {
-				vscode.window.showInformationMessage(
-					`Agent Host ready: ${readiness.modelCount} model(s) visible to Agents window / Copilot harness sessions. ` +
-						`If a new model does not appear, start a Local session or re-pick the model; Cloud (remote coding agent) sessions cannot use local keys.`
-				);
-				logger.info("agentHost.ready", { modelCount: readiness.modelCount });
-				return;
-			}
-			const enable = "Enable Agent Host Support";
-			const docs = "Open BYOK Docs";
-			const choice = await vscode.window.showWarningMessage(
-				`Agent Host not ready: ${readiness.issues.join(" ")} See ${AGENT_HOST_BYOK_DOC_URL}`,
-				enable,
-				docs
-			);
-			if (choice === enable) {
-				await vscode.commands.executeCommand("custom-oaicopilot.enableAgentHost");
-			} else if (choice === docs) {
-				await vscode.env.openExternal(vscode.Uri.parse(AGENT_HOST_BYOK_DOC_URL));
-			}
-			logger.warn("agentHost.notReady", { issues: readiness.issues });
 		})
 	);
 

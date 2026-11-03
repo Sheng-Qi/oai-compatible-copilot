@@ -50,8 +50,9 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 	private readonly _onDidChangeLanguageModelChatInformation = new vscode.EventEmitter<void>();
 	/**
 	 * Fired when `oaicopilot.models` (or related endpoint settings) change so the
-	 * workbench — including the Agent Host BYOK bridge backing the Agents window /
-	 * Copilot harness — re-enumerates this vendor's models without a reload.
+	 * workbench — including the Agents window / Copilot harness, which consumes
+	 * this vendor through the built-in BYOK bridge — re-enumerates the models
+	 * without a reload.
 	 */
 	readonly onDidChangeLanguageModelChatInformation: vscode.Event<void> =
 		this._onDidChangeLanguageModelChatInformation.event;
@@ -63,9 +64,8 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 
 	/**
 	 * Notify the workbench that this vendor's model list changed.
-	 * The Agent Host BYOK bridge debounces `onDidChangeLanguageModels`, so a
-	 * single fire per config save is enough for Agents-window sessions to pick
-	 * up added/removed/renamed models without a window reload.
+	 * Consumers debounce `onDidChangeLanguageModels`, so a single fire per config
+	 * save is enough for added/removed/renamed models to show up without a reload.
 	 */
 	public notifyModelsChanged(): void {
 		try {
