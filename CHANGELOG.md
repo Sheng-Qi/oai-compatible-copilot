@@ -4,6 +4,7 @@
 
 - Chore(agentHost): drop the `custom-oaicopilot.enableAgentHost` / `custom-oaicopilot.checkAgentHost` commands. `chat.agentHost.byokModels.enabled` is enabled by default in current VS Code (only an explicit `false` turns it off) and the host auto-flags non-`copilot` vendors as BYOK, so the commands were no-ops that wrongly implied setup was required.
 - Keep `onDidChangeLanguageModelChatInformation` re-emit on `oaicopilot.models` / `oaicopilot.baseUrl` changes so the model picker and Agents window re-enumerate models without a window reload.
+- Docs: document that BYOK models are local-only — Remote-SSH Copilot/Agent Host sessions cannot use them (VS Code only registers the BYOK bridge on the local MessagePort transport). Regular Chat in a remote window is unaffected.
 
 ## 0.4.7 (2026-10-10)
 

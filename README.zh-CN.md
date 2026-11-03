@@ -73,6 +73,30 @@ git push origin :refs/tags/v0.4.2-replay.1
 2. 如果模型没有出现，请确认 `chat.agentHost.byokModels.enabled` 未被显式设为 `false`，并已配置 `oaicopilot.models`。修改模型列表后会自动重新发布，无需重载窗口。
 3. Cloud（远端 coding agent / GitHub 托管）会话无法使用本地 Key，第三方模型请用本地 Agent Host 或 `Local` harness。
 
+### 远程 SSH 窗口（已知限制）
+
+BYOK 模型只在**本地**生效。VS Code 不会把扩展提供的模型桥接进远程 Copilot 会话，且扩展侧无法绕过：
+
+- Agent Host 只在**本地 MessagePort/IPC** 传输上注册 BYOK 桥接（`agentHostClientByokLm`）。经远程 **WebSocket** 通道创建的会话拿不到任何 BYOK provider，因此远程 Copilot 会话会静默回退到 GitHub Copilot 模型，模型选择器也会把你的自定义模型重置掉。
+- VS Code 自身就有这个提示：*“Bring your own key (BYOK) models aren't supported in remote Copilot sessions.”*（`chat.agentHost.remoteByok` 通知，可点“不再显示”关闭）。
+- `chat.agentHost.byokModels.enabled` 声明为 local scope，对远程宿主不生效。
+
+Remote-SSH 窗口里仍然可用的功能：
+
+- **普通 Chat（Ask/Edit）**——扩展运行在远程扩展宿主中，请求从远程发出。这是远程场景下受支持的用法。
+- 模型枚举、配置界面、状态栏 Token 计数。
+
+不可用的功能：
+
+- 远程窗口里 `Session Target = Copilot`（Agent Host / Copilot harness）的会话无法使用你的模型。
+
+替代方案：
+
+1. 远程窗口里改用普通 Chat，不要开 Agent 会话。
+2. 或在**本地**窗口打开同一工作区（在本地配置 `oaicopilot.*`），在本地运行 Agent 会话。
+
+> 如果你的模型只在 Remote-SSH 窗口启动 Copilot 会话后才消失，那是这个限制导致的，不是配置问题。
+
 ## 环境要求
 - VS Code 1.104.0 或更高版本。
 - OpenAI 兼容供应商的 API 密钥。
@@ -142,6 +166,7 @@ git push origin :refs/tags/v0.4.2-replay.1
 - 完整的 `oaicopilot.proxies` 列表放在用户设置里。数组类型的设置在不同作用域之间不会合并，所以每环境的差异只放在 `oaicopilot.proxy` 中。
 - 故障转移列表每次请求都会探测（结果缓存 60 秒）；单一候选不探测，保持原有快速路径。
 - Git 提交信息生成使用同样的代理解析。
+- Remote-SSH 窗口里可以用本扩展的普通 Chat，但远程窗口中的 Copilot / Agent Host 会话不能使用 BYOK 模型——见 [远程 SSH 窗口（已知限制）](#远程-ssh-窗口已知限制)。
 
 ## ✨ 配置界面
 

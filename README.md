@@ -73,6 +73,30 @@ The new Agents window defaults to `Session Target = Copilot`, which runs in the 
 2. If the models do not show up, check that `chat.agentHost.byokModels.enabled` has not been set to `false` and that `oaicopilot.models` is configured. Editing the model list re-publishes models without a window reload.
 3. Cloud (remote coding agent / GitHub-hosted) sessions cannot use local keys — use local Agent Host or `Local` harness for third-party models.
 
+### Remote SSH windows (expected limitation)
+
+BYOK models are **local-only**. VS Code does not bridge extension-provided models into remote Copilot sessions, and this cannot be worked around from the extension side:
+
+- The Agent Host registers its BYOK bridge (`agentHostClientByokLm`) only on the **local MessagePort/IPC** transport. Sessions created over the remote **WebSocket** channel get no BYOK providers, so a remote Copilot session silently falls back to GitHub Copilot models and the picker resets your custom model.
+- VS Code states this itself: *"Bring your own key (BYOK) models aren't supported in remote Copilot sessions."* (`chat.agentHost.remoteByok` notification, dismissible via "Don't Show Again").
+- `chat.agentHost.byokModels.enabled` is declared with local scope, so it does not apply to remote hosts.
+
+What still works in a Remote-SSH window:
+
+- **Regular Chat (Ask/Edit)** — the extension runs in the remote extension host and calls your endpoint from there. This is the supported path for remote work.
+- Model enumeration, configuration UI, and status-bar token counting.
+
+What does not work:
+
+- `Session Target = Copilot` (Agent Host / Copilot harness) sessions in a remote window cannot use your models.
+
+Workarounds:
+
+1. In the remote window, use regular Chat instead of an Agent session.
+2. Or open the same workspace in a **local** window (configure `oaicopilot.*` there) and run Agent sessions locally.
+
+> If your models disappear only after starting a Copilot session in a Remote-SSH window, that is this limitation, not a configuration problem.
+
 ## Requirements
 - VS Code 1.104.0 or higher.
 - OpenAI-compatible provider API key.
@@ -142,6 +166,7 @@ Notes:
 - Keep the full `oaicopilot.proxies` list in user settings. Array settings do not merge across scopes, so put per-environment differences only in `oaicopilot.proxy`.
 - Failover lists are probed per request (results cached for 60s); single candidates skip probing entirely and keep the previous fast path.
 - Git commit message generation honors the same proxy resolution.
+- Remote-SSH windows can use this extension for regular Chat, but Copilot/Agent Host sessions in a remote window cannot use BYOK models — see [Remote SSH windows (expected limitation)](#remote-ssh-windows-expected-limitation).
 
 ## ✨ Configuration UI
 
