@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.11 (2026-11-11)
+
+- Polish(openai): service tier picker label `Default` → `Standard` (inline readout now shows e.g. `Medium · Standard`; wire value stays `default`). Model tooltip now includes the context length (e.g. `openai (CustomOAI) · 128.0K context`) since the tier picker occupies the picker's context slot on GPT-6+ models.
+
 ## 0.4.10 (2026-11-11)
 
 - Fix(openai): service tier picker was invisible — VS Code renders only one `configurationSchema` property per group, and both pickers shared the `navigation` (effort) slot where `reasoningEffort` wins by alias precedence. The tier picker now uses the `tokens` slot so GPT-6+ models show Effort Level and Service Tier side by side. No effect on context-window math (it only reads the literal `contextSize` key) or non-GPT-6 models.

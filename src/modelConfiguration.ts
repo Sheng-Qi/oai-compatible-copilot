@@ -61,7 +61,8 @@ export const SERVICE_TIER_CONFIGURATION_SCHEMA = {
 			type: "string",
 			title: "Service Tier",
 			enum: SERVICE_TIER_VALUES,
-			enumItemLabels: ["Default", "Fast"],
+			// Labels only; the wire values stay "default"/"fast" (see ServiceTierPickerValue).
+			enumItemLabels: ["Standard", "Fast"],
 			enumDescriptions: ["Standard pricing and performance", "Fast mode: lower latency at higher cost"],
 			default: "default",
 			group: "tokens",

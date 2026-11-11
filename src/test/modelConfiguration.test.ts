@@ -167,6 +167,7 @@ suite("modelConfiguration", () => {
 		assert.strictEqual(schema.group, "tokens");
 		assert.strictEqual(schema.default, "default");
 		assert.deepStrictEqual(schema.enum, ["default", "fast"]);
+		assert.deepStrictEqual(schema.enumItemLabels, ["Standard", "Fast"]);
 		assert.strictEqual(createServiceTierConfigurationSchema("fast").properties.serviceTier.default, "fast");
 	});
 
@@ -210,6 +211,7 @@ suite("modelConfiguration", () => {
 			const info = infos.find((item) => item.id === "gpt-6") as ModelPickerChatInformation | undefined;
 
 			assert.ok(info, "gpt-6 should be registered");
+			assert.strictEqual(info.tooltip, "openai (CustomOAI) · 128.0K context");
 			assert.deepStrictEqual(
 				info.configurationSchema,
 				createModelConfigurationSchema([

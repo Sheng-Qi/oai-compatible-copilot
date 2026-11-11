@@ -11,6 +11,7 @@ import {
 	isServiceTierPickerEnabled,
 } from "./modelConfiguration";
 import { normalizeUserModels } from "./utils";
+import { formatTokenCount } from "./statusBar";
 import { VersionManager } from "./versionManager";
 import { fetchGeminiModels } from "./gemini/geminiApi";
 import { fetchOllamaModels } from "./ollama/ollamaApi";
@@ -49,6 +50,9 @@ export async function prepareLanguageModelChatInformation(
 				const modelId = m.configId ? `${m.id}::${m.configId}` : m.id;
 				const modelName = m.displayName || (m.configId ? `${m.id}::${m.configId}` : `${m.id}`);
 				const detail = m.owned_by ? `${m.owned_by} (${EXTENSION_LABEL})` : EXTENSION_LABEL;
+				// The service-tier picker occupies the `tokens` (context) slot on GPT-6+ models,
+				// displacing the context-window readout there; keep the length visible on hover.
+				const tooltip = `${detail} · ${formatTokenCount(contextLen)} context`;
 				const reasoningEffort = isReasoningEffortValue(m.reasoning_effort) ? m.reasoning_effort : undefined;
 				const serviceTier = isServiceTierPickerEnabled(m) ? m.service_tier : undefined;
 				const configurationSchema = createModelConfigurationSchema([
@@ -60,7 +64,7 @@ export async function prepareLanguageModelChatInformation(
 					id: modelId,
 					name: modelName,
 					detail: detail,
-					tooltip: detail,
+					tooltip: tooltip,
 					family: m.family ?? EXTENSION_LABEL,
 					version: "1.0.0",
 					maxInputTokens: maxInput,
