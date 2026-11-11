@@ -43,6 +43,7 @@ suite("modelConfiguration", () => {
 	test("defines reasoning effort choices for provider configuration", () => {
 		const schema = REASONING_EFFORT_CONFIGURATION_SCHEMA.properties.reasoningEffort;
 		assert.strictEqual(schema.title, "Reasoning Effort");
+		assert.strictEqual(schema.group, "navigation");
 		assert.strictEqual(schema.default, "medium");
 		assert.deepStrictEqual(schema.enum, ["minimal", "low", "medium", "high", "xhigh", "max"]);
 		assert.strictEqual(createReasoningEffortConfigurationSchema("high").properties.reasoningEffort.default, "high");
@@ -163,9 +164,19 @@ suite("modelConfiguration", () => {
 	test("defines service tier choices for provider configuration", () => {
 		const schema = SERVICE_TIER_CONFIGURATION_SCHEMA.properties.serviceTier;
 		assert.strictEqual(schema.title, "Service Tier");
+		assert.strictEqual(schema.group, "tokens");
 		assert.strictEqual(schema.default, "default");
 		assert.deepStrictEqual(schema.enum, ["default", "fast"]);
 		assert.strictEqual(createServiceTierConfigurationSchema("fast").properties.serviceTier.default, "fast");
+	});
+
+	test("service tier and reasoning effort occupy different picker slots", () => {
+		// VS Code renders at most one configurationSchema property per group;
+		// sharing a slot would silently hide one of the pickers.
+		assert.notStrictEqual(
+			SERVICE_TIER_CONFIGURATION_SCHEMA.properties.serviceTier.group,
+			REASONING_EFFORT_CONFIGURATION_SCHEMA.properties.reasoningEffort.group
+		);
 	});
 
 	test("reads the selected service tier from VS Code model configuration", () => {

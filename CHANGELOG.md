@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.10 (2026-11-11)
+
+- Fix(openai): service tier picker was invisible — VS Code renders only one `configurationSchema` property per group, and both pickers shared the `navigation` (effort) slot where `reasoningEffort` wins by alias precedence. The tier picker now uses the `tokens` slot so GPT-6+ models show Effort Level and Service Tier side by side. No effect on context-window math (it only reads the literal `contextSize` key) or non-GPT-6 models.
+
 ## 0.4.9 (2026-11-11)
 
 - Feat(openai): Fast mode switch via `service_tier`. Set `"service_tier": "default"` on a GPT-6+ model (`apiMode: openai` or `openai-responses`) to get a Copilot picker (Default / Fast) that switches tiers per request without changing models, so the session context is preserved. Non-GPT-6 models and models without the field are unaffected (parameter omitted). Commit message generation sends the configured default tier.

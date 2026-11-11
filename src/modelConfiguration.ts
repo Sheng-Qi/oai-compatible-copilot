@@ -48,6 +48,13 @@ export type ServiceTierPickerValue = "default" | "fast";
 
 const SERVICE_TIER_VALUES: readonly ServiceTierPickerValue[] = ["default", "fast"];
 
+// NOTE: VS Code renders at most one `configurationSchema` property per group
+// (`getModelConfigProperty` returns the first match per group, with alias
+// precedence for known keys). Reasoning effort already occupies the
+// `navigation` (effort) slot, so the tier picker reuses the `tokens`
+// (context) slot and both render side by side. Safe: context-window math
+// only reads the literal `contextSize` key, and the context-size request
+// override lives on the Copilot (CAPI) path, neither of which sees `serviceTier`.
 export const SERVICE_TIER_CONFIGURATION_SCHEMA = {
 	properties: {
 		serviceTier: {
@@ -57,7 +64,7 @@ export const SERVICE_TIER_CONFIGURATION_SCHEMA = {
 			enumItemLabels: ["Default", "Fast"],
 			enumDescriptions: ["Standard pricing and performance", "Fast mode: lower latency at higher cost"],
 			default: "default",
-			group: "navigation",
+			group: "tokens",
 		},
 	},
 } as const;
