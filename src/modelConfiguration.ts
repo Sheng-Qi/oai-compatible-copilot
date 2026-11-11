@@ -44,6 +44,35 @@ export function createReasoningEffortConfigurationSchema(defaultValue: Reasoning
 	} as const;
 }
 
+export type ServiceTierPickerValue = "default" | "fast";
+
+const SERVICE_TIER_VALUES: readonly ServiceTierPickerValue[] = ["default", "fast"];
+
+export const SERVICE_TIER_CONFIGURATION_SCHEMA = {
+	properties: {
+		serviceTier: {
+			type: "string",
+			title: "Service Tier",
+			enum: SERVICE_TIER_VALUES,
+			enumItemLabels: ["Default", "Fast"],
+			enumDescriptions: ["Standard pricing and performance", "Fast mode: lower latency at higher cost"],
+			default: "default",
+			group: "navigation",
+		},
+	},
+} as const;
+
+export function createServiceTierConfigurationSchema(defaultValue: ServiceTierPickerValue) {
+	return {
+		properties: {
+			serviceTier: {
+				...SERVICE_TIER_CONFIGURATION_SCHEMA.properties.serviceTier,
+				default: defaultValue,
+			},
+		},
+	} as const;
+}
+
 export type ModelConfigurationOptions = vscode.ProvideLanguageModelChatResponseOptions & {
 	readonly modelConfiguration?: Record<string, unknown>;
 	readonly configuration?: Record<string, unknown>;
@@ -53,8 +82,23 @@ export type ModelPickerChatInformation = vscode.LanguageModelChatInformation & {
 	readonly isUserSelectable?: boolean;
 	readonly detail?: string;
 	readonly tooltip?: string;
-	readonly configurationSchema?: ReturnType<typeof createReasoningEffortConfigurationSchema>;
+	readonly configurationSchema?: {
+		readonly properties: Record<string, unknown>;
+	};
 };
+
+export function createModelConfigurationSchema(
+	schemas: ReadonlyArray<{ readonly properties: Record<string, unknown> }>
+): { readonly properties: Record<string, unknown> } | undefined {
+	if (schemas.length === 0) {
+		return undefined;
+	}
+	const properties: Record<string, unknown> = {};
+	for (const schema of schemas) {
+		Object.assign(properties, schema.properties);
+	}
+	return { properties };
+}
 
 export function isReasoningEffortPickerEnabled(
 	model: HFModelItem | undefined
@@ -78,4 +122,41 @@ export function getConfiguredReasoningEffort(
 
 export function isReasoningEffortValue(value: unknown): value is ReasoningEffortPickerValue {
 	return typeof value === "string" && REASONING_EFFORT_VALUES.includes(value as ReasoningEffortPickerValue);
+}
+
+/**
+ * Whether the model is a GPT-6 (or newer major version) model, the only family
+ * that currently supports the Fast service tier. Matches ids like `gpt-6`,
+ * `gpt-6.1-sol`, `gpt-7-mini`.
+ */
+export function isGpt6OrNewer(model: HFModelItem | undefined): boolean {
+	const id = model?.id?.trim() ?? "";
+	const match = /^gpt-(\d+)/i.exec(id);
+	if (!match) {
+		return false;
+	}
+	return Number.parseInt(match[1], 10) >= 6;
+}
+
+export function isServiceTierPickerEnabled(
+	model: HFModelItem | undefined
+): model is HFModelItem & { service_tier: ServiceTierPickerValue } {
+	return isGpt6OrNewer(model) && isServiceTierValue(model?.service_tier);
+}
+
+export function getConfiguredServiceTier(
+	options: vscode.ProvideLanguageModelChatResponseOptions | undefined,
+	fallback: ServiceTierPickerValue = "default"
+): ServiceTierPickerValue {
+	const modelOptions = options as ModelConfigurationOptions | undefined;
+	const configuredTier = modelOptions?.modelConfiguration?.serviceTier ?? modelOptions?.configuration?.serviceTier;
+
+	if (isServiceTierValue(configuredTier)) {
+		return configuredTier;
+	}
+	return fallback;
+}
+
+export function isServiceTierValue(value: unknown): value is ServiceTierPickerValue {
+	return typeof value === "string" && SERVICE_TIER_VALUES.includes(value as ServiceTierPickerValue);
 }

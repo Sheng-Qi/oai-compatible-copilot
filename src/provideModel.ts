@@ -3,9 +3,12 @@ import { CancellationToken, LanguageModelChatInformation } from "vscode";
 
 import type { HFApiMode, HFModelItem, HFModelsResponse } from "./types";
 import {
+	createModelConfigurationSchema,
 	createReasoningEffortConfigurationSchema,
+	createServiceTierConfigurationSchema,
 	type ModelPickerChatInformation,
 	isReasoningEffortValue,
+	isServiceTierPickerEnabled,
 } from "./modelConfiguration";
 import { normalizeUserModels } from "./utils";
 import { VersionManager } from "./versionManager";
@@ -47,6 +50,11 @@ export async function prepareLanguageModelChatInformation(
 				const modelName = m.displayName || (m.configId ? `${m.id}::${m.configId}` : `${m.id}`);
 				const detail = m.owned_by ? `${m.owned_by} (${EXTENSION_LABEL})` : EXTENSION_LABEL;
 				const reasoningEffort = isReasoningEffortValue(m.reasoning_effort) ? m.reasoning_effort : undefined;
+				const serviceTier = isServiceTierPickerEnabled(m) ? m.service_tier : undefined;
+				const configurationSchema = createModelConfigurationSchema([
+					...(serviceTier ? [createServiceTierConfigurationSchema(serviceTier)] : []),
+					...(reasoningEffort ? [createReasoningEffortConfigurationSchema(reasoningEffort)] : []),
+				]);
 
 				return {
 					id: modelId,
@@ -58,9 +66,7 @@ export async function prepareLanguageModelChatInformation(
 					maxInputTokens: maxInput,
 					maxOutputTokens: maxOutput,
 					isUserSelectable: true,
-					...(reasoningEffort
-						? { configurationSchema: createReasoningEffortConfigurationSchema(reasoningEffort) }
-						: {}),
+					...(configurationSchema ? { configurationSchema } : {}),
 					capabilities: {
 						toolCalling: true,
 						imageInput: m?.vision ?? false,

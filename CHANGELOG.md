@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.9 (2026-11-11)
+
+- Feat(openai): Fast mode switch via `service_tier`. Set `"service_tier": "default"` on a GPT-6+ model (`apiMode: openai` or `openai-responses`) to get a Copilot picker (Default / Fast) that switches tiers per request without changing models, so the session context is preserved. Non-GPT-6 models and models without the field are unaffected (parameter omitted). Commit message generation sends the configured default tier.
+
 ## 0.4.8 (2026-11-03)
 
 - Chore(agentHost): drop the `custom-oaicopilot.enableAgentHost` / `custom-oaicopilot.checkAgentHost` commands. `chat.agentHost.byokModels.enabled` is enabled by default in current VS Code (only an explicit `false` turns it off) and the host auto-flags non-`copilot` vendors as BYOK, so the commands were no-ops that wrongly implied setup was required.

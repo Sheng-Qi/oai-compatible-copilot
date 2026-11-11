@@ -52,6 +52,7 @@ const modelMinPInput = document.getElementById("modelMinP");
 const modelFrequencyPenaltyInput = document.getElementById("modelFrequencyPenalty");
 const modelPresencePenaltyInput = document.getElementById("modelPresencePenalty");
 const modelRepetitionPenaltyInput = document.getElementById("modelRepetitionPenalty");
+const modelServiceTierInput = document.getElementById("modelServiceTier");
 const modelReasoningEffortInput = document.getElementById("modelReasoningEffort");
 const modelEnableThinkingInput = document.getElementById("modelEnableThinking");
 const modelThinkingBudgetInput = document.getElementById("modelThinkingBudget");
@@ -570,6 +571,7 @@ function resetModelForm() {
 	modelFrequencyPenaltyInput.value = "";
 	modelPresencePenaltyInput.value = "";
 	modelRepetitionPenaltyInput.value = "";
+	modelServiceTierInput.value = "";
 	modelReasoningEffortInput.value = "";
 	modelEnableThinkingInput.value = "";
 	modelThinkingBudgetInput.value = "";
@@ -621,6 +623,7 @@ function collectModelFormData() {
 		presence_penalty: modelPresencePenaltyInput.value !== "" ? parseFloat(modelPresencePenaltyInput.value) : undefined,
 		repetition_penalty:
 			modelRepetitionPenaltyInput.value !== "" ? parseFloat(modelRepetitionPenaltyInput.value) : undefined,
+		service_tier: modelServiceTierInput.value || undefined,
 		reasoning_effort: modelReasoningEffortInput.value || undefined,
 		enable_thinking: modelEnableThinkingInput.value ? modelEnableThinkingInput.value === "true" : undefined,
 		thinking_budget: modelThinkingBudgetInput.value ? parseInt(modelThinkingBudgetInput.value) : undefined,
@@ -929,6 +932,7 @@ function populateModelForm(model) {
 	modelFrequencyPenaltyInput.value = model.frequency_penalty || "";
 	modelPresencePenaltyInput.value = model.presence_penalty || "";
 	modelRepetitionPenaltyInput.value = model.repetition_penalty || "";
+	modelServiceTierInput.value = model.service_tier || "";
 	modelReasoningEffortInput.value = model.reasoning_effort || "";
 	modelEnableThinkingInput.value = model.enable_thinking !== undefined ? String(model.enable_thinking) : "";
 	modelThinkingBudgetInput.value = model.thinking_budget || "";

@@ -40,10 +40,7 @@ export function normalizeResponsesReasoningItem(item: unknown): ResponsesReasoni
 
 export function createResponsesReasoningPart(item: ResponsesReasoningReplayItem): vscode.LanguageModelDataPart {
 	const payload = { version: 1, item };
-	return new vscode.LanguageModelDataPart(
-		new TextEncoder().encode(JSON.stringify(payload)),
-		RESPONSES_REASONING_MIME
-	);
+	return new vscode.LanguageModelDataPart(new TextEncoder().encode(JSON.stringify(payload)), RESPONSES_REASONING_MIME);
 }
 
 export function parseResponsesReasoningPart(part: unknown): ResponsesReasoningReplayItem | null {

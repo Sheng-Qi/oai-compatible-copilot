@@ -393,6 +393,18 @@
 									</select>
 								</div>
 								<div class="field">
+									<label for="modelServiceTier">Service Tier (Fast Mode)</label>
+									<div class="field-description">
+										Default OpenAI service tier. GPT-6+ models get a Copilot picker to switch Fast without changing
+										models. Leave empty to omit the parameter.
+									</div>
+									<select id="modelServiceTier" class="model-input">
+										<option value=""></option>
+										<option value="default">Default</option>
+										<option value="fast">Fast</option>
+									</select>
+								</div>
+								<div class="field">
 									<label for="modelReasoningEffort">Reasoning Effort (OpenAI)</label>
 									<div class="field-description">
 										Default OpenAI reasoning effort. Leave empty to hide the Copilot picker.

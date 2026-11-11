@@ -8,7 +8,12 @@ import {
 } from "vscode";
 
 import type { HFModelItem, ReasoningConfig, TokenUsage } from "../types";
-import { getConfiguredReasoningEffort, isReasoningEffortPickerEnabled } from "../modelConfiguration";
+import {
+	getConfiguredReasoningEffort,
+	getConfiguredServiceTier,
+	isReasoningEffortPickerEnabled,
+	isServiceTierPickerEnabled,
+} from "../modelConfiguration";
 
 import type {
 	OpenAIChatMessage,
@@ -177,6 +182,13 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 			rb.reasoning_effort = getConfiguredReasoningEffort(options, um.reasoning_effort);
 		} else if (um?.reasoning_effort !== undefined) {
 			rb.reasoning_effort = um.reasoning_effort;
+		}
+
+		// OpenAI service tier (Fast mode switch; the Copilot picker only shows for GPT-6+)
+		if (isServiceTierPickerEnabled(um)) {
+			rb.service_tier = getConfiguredServiceTier(options, um.service_tier);
+		} else if (um?.service_tier !== undefined) {
+			rb.service_tier = um.service_tier;
 		}
 
 		// enable_thinking (non-OpenRouter only, same as upstream: opt-in, no default)

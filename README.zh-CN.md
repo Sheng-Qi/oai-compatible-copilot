@@ -562,6 +562,7 @@ VS Code Copilot 针对特定模型优化了系统提示词。[详细介绍](http
   - `max_tokens`：推理的特定 token 限制（Anthropic 风格，作为 effort 的替代方案）
 - `thinking`：Zai 供应商的思维链配置
   - `type`：设为 'enabled' 开启思维链，'disabled' 关闭思维链
+- `service_tier`：OpenAI Chat Completions / Responses 请求的默认服务层级（`default` / `fast`）。GPT-6+ 模型还会在 Copilot 中显示下拉框，可按请求切换 Fast 模式而无需更换模型（会话上下文保留）。留空则不发送该参数。
 - `reasoning_effort`：推理力度级别（OpenAI 推理配置）
 - `headers`：发送到此模型供应商的自定义 HTTP 请求头（如 `{"X-API-Version": "v1", "X-Custom-Header": "value"}`）。将与默认请求头（Authorization、Content-Type、User-Agent）合并
 - `proxy`：模型专属代理（可选）：代理 URL、`oaicopilot.proxies` 中的配置名、逗号/空格分隔的故障转移列表（`'primary, fallback, direct'`）或关键字 `direct`。为空时回退到全局 `oaicopilot.proxy`。

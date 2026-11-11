@@ -563,6 +563,7 @@ All parameters support individual configuration for different models, providing 
 - `thinking`: Thinking configuration for Zai provider
   - `type`: Set to 'enabled' to enable thinking, 'disabled' to disable thinking
 - `reasoning_effort`: Reasoning effort level (OpenAI reasoning configuration)
+- `service_tier`: Default service tier (`default` / `fast`) for OpenAI Chat Completions / Responses requests. GPT-6+ models also get a Copilot picker to switch Fast mode per request without changing models (session context is preserved). Leave empty to omit the parameter.
 - `headers`: Custom HTTP headers to be sent with every request to this model's provider (e.g., `{"X-API-Version": "v1", "X-Custom-Header": "value"}`). These headers will be merged with the default headers (Authorization, Content-Type, User-Agent)
 - `proxy`: Optional per-model proxy: a proxy URL, a profile name from `oaicopilot.proxies`, a comma/space-separated failover list (`'primary, fallback, direct'`), or the keyword `direct`. Empty falls back to the global `oaicopilot.proxy` setting.
 - `extra`: Extra request body parameters.

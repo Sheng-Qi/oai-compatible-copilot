@@ -25,7 +25,7 @@
 		"type": "git",
 		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 	},
-	"version": "0.4.8",
+	"version": "0.4.9",
 	"engines": {
 		"vscode": "^1.120.0"
 	},
@@ -231,6 +231,15 @@
 								"minimum": 1,
 								"maximum": 10000000,
 								"description": "Maximum number of tokens to generate (OpenAI new standard parameter)."
+							},
+							"service_tier": {
+								"type": "string",
+								"default": "default",
+								"enum": [
+									"default",
+									"fast"
+								],
+								"description": "Default service tier for OpenAI Chat Completions / Responses requests. GPT-6+ models also get a Copilot picker to switch Fast mode without changing models. Leave empty to omit the parameter."
 							},
 							"reasoning_effort": {
 								"type": "string",

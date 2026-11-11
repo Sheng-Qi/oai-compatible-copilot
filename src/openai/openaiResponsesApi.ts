@@ -8,7 +8,12 @@ import {
 } from "vscode";
 
 import type { HFModelItem } from "../types";
-import { getConfiguredReasoningEffort, isReasoningEffortPickerEnabled } from "../modelConfiguration";
+import {
+	getConfiguredReasoningEffort,
+	getConfiguredServiceTier,
+	isReasoningEffortPickerEnabled,
+	isServiceTierPickerEnabled,
+} from "../modelConfiguration";
 import type { OpenAIToolCall } from "./openaiTypes";
 
 import {
@@ -350,6 +355,13 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				...existing,
 				effort: um.reasoning_effort,
 			};
+		}
+
+		// OpenAI service tier (Fast mode switch; the Copilot picker only shows for GPT-6+)
+		if (isServiceTierPickerEnabled(um)) {
+			rb.service_tier = getConfiguredServiceTier(options, um.service_tier);
+		} else if (um?.service_tier !== undefined) {
+			rb.service_tier = um.service_tier;
 		}
 
 		if (this._includeEncryptedReasoning && rb.include === undefined) {
