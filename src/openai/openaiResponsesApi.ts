@@ -28,7 +28,6 @@ import { CommonApi } from "../commonApi";
 import { logger } from "../logger";
 import { OutputTextStreamNormalizer } from "./outputTextStreamNormalizer";
 import {
-	createResponsesReasoningPart,
 	normalizeResponsesReasoningItem,
 	parseResponsesReasoningPart,
 	type ResponsesReasoningReplayItem,
@@ -38,8 +37,6 @@ export interface ResponsesInputMessage {
 	role: "user" | "assistant" | "system";
 	content: ResponsesContentPart[];
 	type?: "message";
-	id?: string;
-	status?: "completed" | "incomplete";
 }
 
 export interface ResponsesContentPart {
@@ -54,24 +51,18 @@ export interface ResponsesFunctionCall {
 	call_id: string;
 	name: string;
 	arguments: string;
-	id?: string;
-	status?: "completed";
 }
 
 export interface ResponsesFunctionCallOutput {
 	type: "function_call_output";
 	call_id: string;
 	output: string;
-	id?: string;
-	status?: "completed";
 }
 
 export interface ResponsesReasoning {
 	type: "reasoning";
 	summary: ResponsesContentPart[];
-	id?: string;
 	encrypted_content?: string | null;
-	status?: "completed";
 }
 
 export type ResponsesInputItem =
@@ -80,23 +71,14 @@ export type ResponsesInputItem =
 	| ResponsesFunctionCallOutput
 	| ResponsesReasoning;
 
-export interface OpenaiResponsesApiOptions {
-	harnessInput?: boolean;
-	includeEncryptedReasoning?: boolean;
-}
-
 export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<string, unknown>> {
 	private _responseId: string | null = null;
 	private _responseCompleted = false;
 	private readonly _outputTextStreamNormalizer = new OutputTextStreamNormalizer();
 	private _capturedReasoningItems: ResponsesReasoningReplayItem[] = [];
-	private readonly _harnessInput: boolean;
-	private readonly _includeEncryptedReasoning: boolean;
 
-	constructor(modelId: string, options: OpenaiResponsesApiOptions = {}) {
+	constructor(modelId: string) {
 		super(modelId);
-		this._harnessInput = options.harnessInput === true;
-		this._includeEncryptedReasoning = options.includeEncryptedReasoning === true;
 	}
 
 	get responseId(): string | null {
@@ -119,7 +101,11 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 	): ResponsesInputItem[] {
 		const out: ResponsesInputItem[] = [];
 
-		for (const m of messages) {
+		// Cache-safety: the input must be byte-stable across turns so the
+		// provider's prompt-cache prefix matches. Never emit per-request ids,
+		// timestamps, or status flips here — `id`/`status` are server-managed
+		// output fields and client-generated values only poison the cache.
+		for (const [messageIndex, m] of messages.entries()) {
 			const role = mapRole(m);
 			const textParts: string[] = [];
 			const imageParts: vscode.LanguageModelDataPart[] = [];
@@ -139,7 +125,9 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				} else if (part instanceof vscode.LanguageModelDataPart && isImageMimeType(part.mimeType)) {
 					imageParts.push(part);
 				} else if (part instanceof vscode.LanguageModelToolCallPart) {
-					const id = part.callId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+					// VS Code always assigns callIds; keep the fallback deterministic
+					// (never random) so a missing id can't poison the cache prefix.
+					const id = part.callId || `call_oaicopilot_${messageIndex}_${toolCalls.length}`;
 					let args = "{}";
 					try {
 						args = JSON.stringify(part.input ?? {});
@@ -162,67 +150,35 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 
 			// assistant message (optional)
 			if (role === "assistant") {
-				if (this._harnessInput) {
-					for (const replay of reasoningReplays) {
-						out.push({
-							type: "reasoning",
-							summary: replay.summary,
-							encrypted_content: replay.encrypted_content,
-						});
-					}
+				for (const replay of reasoningReplays) {
+					out.push({
+						type: "reasoning",
+						summary: replay.summary,
+						encrypted_content: replay.encrypted_content,
+					});
 				}
 				if (joinedText) {
-					out.push(
-						this._harnessInput
-							? {
-									role: "assistant",
-									content: [{ type: "output_text", text: joinedText }],
-									type: "message",
-								}
-							: {
-									role: "assistant",
-									content: [{ type: "output_text", text: joinedText }],
-									type: "message",
-									id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-									status: "completed",
-								}
-					);
+					out.push({
+						role: "assistant",
+						content: [{ type: "output_text", text: joinedText }],
+						type: "message",
+					});
 				}
 
 				if (joinedThinking) {
-					out.push(
-						this._harnessInput
-							? {
-									summary: [{ type: "summary_text", text: joinedThinking }],
-									type: "reasoning",
-								}
-							: {
-									summary: [{ type: "summary_text", text: joinedThinking }],
-									type: "reasoning",
-									id: `tk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-									status: "completed",
-								}
-					);
+					out.push({
+						summary: [{ type: "summary_text", text: joinedThinking }],
+						type: "reasoning",
+					});
 				}
 
 				for (const tc of toolCalls) {
-					out.push(
-						this._harnessInput
-							? {
-									type: "function_call",
-									call_id: tc.id,
-									name: tc.function.name,
-									arguments: tc.function.arguments,
-								}
-							: {
-									type: "function_call",
-									id: `fc_${tc.id}`,
-									call_id: tc.id,
-									name: tc.function.name,
-									arguments: tc.function.arguments,
-									status: "completed",
-								}
-					);
+					out.push({
+						type: "function_call",
+						call_id: tc.id,
+						name: tc.function.name,
+						arguments: tc.function.arguments,
+					});
 				}
 			}
 
@@ -231,21 +187,11 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				if (!tr.callId) {
 					continue;
 				}
-				out.push(
-					this._harnessInput
-						? {
-								type: "function_call_output",
-								call_id: tr.callId,
-								output: tr.content || "",
-							}
-						: {
-								type: "function_call_output",
-								call_id: tr.callId,
-								output: tr.content || "",
-								id: `fco_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-								status: "completed",
-							}
-				);
+				out.push({
+					type: "function_call_output",
+					call_id: tr.callId,
+					output: tr.content || "",
+				});
 			}
 
 			// user message
@@ -259,20 +205,11 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 					contentArray.push({ type: "input_image", image_url: dataUrl, detail: "auto" });
 				}
 				if (contentArray.length > 0) {
-					out.push(
-						this._harnessInput
-							? {
-									role: "user",
-									content: contentArray,
-									type: "message",
-								}
-							: {
-									role: "user",
-									content: contentArray,
-									type: "message",
-									status: "completed",
-								}
-					);
+					out.push({
+						role: "user",
+						content: contentArray,
+						type: "message",
+					});
 				}
 			}
 
@@ -282,33 +219,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			}
 		}
 
-		if (!this._harnessInput && out.length > 0) {
-			const lastItem = out[out.length - 1];
-			if (lastItem && typeof lastItem === "object" && "type" in lastItem) {
-				const item = lastItem as unknown as Record<string, unknown>;
-				if (item.type === "message" && item.role === "user") {
-					item.status = "incomplete";
-				}
-			}
-		}
 		return out;
-	}
-
-	convertMessagesAfterLastAssistant(
-		messages: readonly LanguageModelChatRequestMessage[],
-		modelConfig: { includeReasoningInRequest: boolean }
-	): ResponsesInputItem[] {
-		let lastAssistant = -1;
-		for (let i = messages.length - 1; i >= 0; i--) {
-			if (messages[i].role === vscode.LanguageModelChatMessageRole.Assistant) {
-				lastAssistant = i;
-				break;
-			}
-		}
-		if (lastAssistant < 0 || lastAssistant >= messages.length - 1) {
-			return [];
-		}
-		return this.convertMessages(messages.slice(lastAssistant + 1), modelConfig);
 	}
 
 	prepareRequestBody(
@@ -364,7 +275,9 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			rb.service_tier = serviceTier;
 		}
 
-		if (this._includeEncryptedReasoning && rb.include === undefined) {
+		// Always ask for encrypted reasoning so follow-up turns can replay it
+		// for continuity (relays that don't support `include` ignore it).
+		if (rb.include === undefined) {
 			rb.include = ["reasoning.encrypted_content"];
 		}
 
@@ -675,12 +588,11 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 					return;
 				}
 				if (item.type === "reasoning") {
-					if (this._includeEncryptedReasoning) {
-						const replay = normalizeResponsesReasoningItem(item);
-						if (replay) {
-							this._capturedReasoningItems.push(replay);
-							progress.report(createResponsesReasoningPart(replay));
-						}
+					// Capture-only: the provider reports the hidden part once and
+					// persists the item for next-turn replay.
+					const replay = normalizeResponsesReasoningItem(item);
+					if (replay) {
+						this._capturedReasoningItems.push(replay);
 					}
 					this.reportEndThinking(progress);
 					return;
@@ -832,21 +744,16 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				role: "system",
 				content: [{ type: "input_text", text: systemPrompt }],
 				type: "message",
-				id: `msg_sys_${Date.now()}`,
-				status: "completed",
 			});
 		}
 
 		// Add user/assistant messages
-		for (let i = 0; i < messages.length; i++) {
-			const msg = messages[i];
+		for (const msg of messages) {
 			const role = msg.role === "user" || msg.role === "assistant" || msg.role === "system" ? msg.role : "user";
 			input.push({
 				role,
 				content: [{ type: "input_text", text: msg.content }],
 				type: "message",
-				id: `msg_${Date.now()}_${i}`,
-				status: "completed",
 			});
 		}
 

@@ -1,5 +1,11 @@
 # Change Log
 
+## 0.5.2 (2026-11-17)
+
+- Fix(cache): `openai-responses` input is now byte-stable across turns for every model (previously only `opencodeSession` models were). Per-request `msg_/tk_/fco_` ids, `status` fields, and the last-user-message `incomplete` flip — inherited from upstream `7a6bd09` — poisoned the prompt-cache prefix on each turn, so router models like `gpt-6.1-sol` paid full input tokens every request while Codex (clean input shape) hit cache. The wire shape now matches Codex: only `role/content/call_id/name/arguments/summary/encrypted_content`, plus a regression test asserting identical history serializes identically.
+- Fix(stateful): `previous_response_id` chaining and encrypted-reasoning replay no longer depend on hidden `LanguageModelDataPart` markers in history — verified against 1000+ logged requests that VS Code never echoes them back, so the chain silently never engaged. Both are now keyed by the local session anchor in `sessionRouting` (persisted in globalState, TTL 3 days), request `include: ["reasoning.encrypted_content"]` on all Responses models, and degrade in two stages on gateway 4xx (drop `previous_response_id` first, then also `include` + replayed reasoning) so strict relays still get plain Codex-style input. `opencodeSession` models keep `store: false` without chaining, as before.
+- Chore: drop dead `convertMessagesAfterLastAssistant` and the `harnessInput`/`includeEncryptedReasoning` split (`OpenaiResponsesApi` constructor takes only `modelId` now).
+
 ## 0.5.1 (2026-11-17)
 
 - Feat(tier): status bar indicator for the global service tier (`OAI: Std` / `$(zap) OAI: Fast` with warning background on Fast). Hover shows the tier detail; clicking opens the tier switcher.

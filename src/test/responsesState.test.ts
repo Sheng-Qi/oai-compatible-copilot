@@ -42,7 +42,7 @@ suite("ResponsesState", () => {
 		);
 	});
 
-	test("replays encrypted reasoning only on the OpenCode harness path", () => {
+	test("replays encrypted reasoning for every Responses model", () => {
 		const replay = normalizeResponsesReasoningItem({
 			type: "reasoning",
 			id: "rs_1",
@@ -58,11 +58,8 @@ suite("ResponsesState", () => {
 			} as unknown as vscode.LanguageModelChatRequestMessage,
 			textMessage(1, "next"),
 		];
-		const harness = new OpenaiResponsesApi("muse-spark-1.3-opencode", {
-			harnessInput: true,
-			includeEncryptedReasoning: true,
-		});
-		const input = harness.convertMessages(messages, { includeReasoningInRequest: false });
+		const opencode = new OpenaiResponsesApi("muse-spark-1.3-opencode");
+		const input = opencode.convertMessages(messages, { includeReasoningInRequest: false });
 		const reasoning = input.find((item) => (item as { type?: string }).type === "reasoning") as unknown as Record<
 			string,
 			unknown
@@ -73,13 +70,14 @@ suite("ResponsesState", () => {
 
 		const router = new OpenaiResponsesApi("glm-5.3-flash");
 		const routerInput = router.convertMessages(messages, { includeReasoningInRequest: false });
-		assert.strictEqual(
-			routerInput.find((item) => (item as { type?: string }).type === "reasoning"),
-			undefined
-		);
+		const routerReasoning = routerInput.find(
+			(item) => (item as { type?: string }).type === "reasoning"
+		) as unknown as Record<string, unknown>;
+		assert.ok(routerReasoning);
+		assert.strictEqual(routerReasoning.encrypted_content, "encrypted-state");
 	});
 
-	test("emits harness-shaped input without volatile id/status only when enabled", () => {
+	test("emits cache-stable input without volatile id/status for every model", () => {
 		const toolCallMsg = {
 			role: 2 as vscode.LanguageModelChatMessageRole,
 			content: [
@@ -98,7 +96,7 @@ suite("ResponsesState", () => {
 			],
 			name: undefined,
 		} as unknown as vscode.LanguageModelChatRequestMessage;
-		const harness = new OpenaiResponsesApi("muse-spark-1.3-opencode", { harnessInput: true });
+		const harness = new OpenaiResponsesApi("muse-spark-1.3-opencode");
 		const input = harness.convertMessages([toolCallMsg, toolResultMsg, textMessage(1, "next")], {
 			includeReasoningInRequest: false,
 		});
@@ -109,14 +107,43 @@ suite("ResponsesState", () => {
 
 		const router = new OpenaiResponsesApi("glm-5.3-flash");
 		const routerInput = router.convertMessages([textMessage(1, "hello")], { includeReasoningInRequest: false });
-		const user = routerInput[0] as unknown as Record<string, unknown>;
-		assert.strictEqual(user.status, "incomplete");
+		for (const item of routerInput as unknown as Array<Record<string, unknown>>) {
+			assert.ok(!("id" in item), `volatile id leaked: ${JSON.stringify(item).slice(0, 200)}`);
+			assert.ok(!("status" in item), `volatile status leaked: ${JSON.stringify(item).slice(0, 200)}`);
+		}
 	});
 
-	test("adds encrypted include only for OpenCode models", () => {
-		const opencode = new OpenaiResponsesApi("muse-spark-1.3-opencode", {
-			includeEncryptedReasoning: true,
-		}).prepareRequestBody(
+	test("keeps identical history byte-stable across conversions (prompt-cache prefix)", () => {
+		const toolCallMsg = {
+			role: 2 as vscode.LanguageModelChatMessageRole,
+			content: [
+				new vscode.LanguageModelTextPart("working"),
+				new vscode.LanguageModelToolCallPart("call_abc123", "run_in_terminal", { command: "ls" }),
+			],
+			name: undefined,
+		} as unknown as vscode.LanguageModelChatRequestMessage;
+		const toolResultMsg = {
+			role: 1 as vscode.LanguageModelChatMessageRole,
+			content: [
+				{
+					callId: "call_abc123",
+					content: [new vscode.LanguageModelTextPart("ok")],
+				},
+			],
+			name: undefined,
+		} as unknown as vscode.LanguageModelChatRequestMessage;
+		const history = [textMessage(1, "hello"), toolCallMsg, toolResultMsg, textMessage(2, "done")];
+		const first = new OpenaiResponsesApi("gpt-6.1-sol").convertMessages(history, {
+			includeReasoningInRequest: false,
+		});
+		const second = new OpenaiResponsesApi("gpt-6.1-sol").convertMessages(history, {
+			includeReasoningInRequest: false,
+		});
+		assert.strictEqual(JSON.stringify(second), JSON.stringify(first));
+	});
+
+	test("adds encrypted include for every Responses model", () => {
+		const opencode = new OpenaiResponsesApi("muse-spark-1.3-opencode").prepareRequestBody(
 			{ model: "muse-spark-1.3-opencode", input: [], stream: true, reasoning: { effort: "xhigh" } },
 			{
 				id: "muse-spark-1.3-opencode",
@@ -130,13 +157,11 @@ suite("ResponsesState", () => {
 			{ model: "glm-5.3-flash", input: [], stream: true, reasoning: { effort: "max" } },
 			{ id: "glm-5.3-flash", owned_by: "router" }
 		);
-		assert.strictEqual(glm.include, undefined);
+		assert.deepStrictEqual(glm.include, ["reasoning.encrypted_content"]);
 	});
 
 	test("rewrites extra.model and leaves router headers without OpenCode session", () => {
-		const body = new OpenaiResponsesApi("muse-spark-1.3-opencode", {
-			includeEncryptedReasoning: true,
-		}).prepareRequestBody(
+		const body = new OpenaiResponsesApi("muse-spark-1.3-opencode").prepareRequestBody(
 			{ model: "muse-spark-1.3-opencode", input: [], stream: true },
 			{
 				id: "muse-spark-1.3-opencode",
