@@ -4,19 +4,6 @@ import * as vscode from "vscode";
 const MAX_SESSION_ENTRIES = 512;
 const SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const STORAGE_KEY = "customoaicopilot.sessionRouting.v1";
-const RESPONSES_STATE_KEY = "customoaicopilot.responsesState.v1";
-
-/** Latest server-side state for one Responses conversation, keyed by session anchor. */
-export interface ResponsesConversationState {
-	responseId: string;
-	reasoning: Array<{
-		type: "reasoning";
-		id: string;
-		summary: Array<{ type: "summary_text"; text: string }>;
-		encrypted_content: string;
-	}>;
-	updatedAt: number;
-}
 
 interface SessionEntry {
 	sessionId: string;
@@ -24,27 +11,11 @@ interface SessionEntry {
 }
 
 const _sessions = new Map<string, SessionEntry>();
-const _responsesState = new Map<string, ResponsesConversationState>();
 let _storage: vscode.Memento | undefined;
-
-function isResponsesReasoningReplayItem(value: unknown): value is ResponsesConversationState["reasoning"][number] {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	const item = value as Record<string, unknown>;
-	if (item.type !== "reasoning" || typeof item.id !== "string" || item.id.length === 0) {
-		return false;
-	}
-	if (typeof item.encrypted_content !== "string" || item.encrypted_content.length === 0) {
-		return false;
-	}
-	return Array.isArray(item.summary);
-}
 
 export function initSessionRouting(storage: vscode.Memento): void {
 	_storage = storage;
 	_sessions.clear();
-	_responsesState.clear();
 	const stored = storage.get<Record<string, SessionEntry>>(STORAGE_KEY, {});
 	const now = Date.now();
 	for (const [anchor, entry] of Object.entries(stored ?? {})) {
@@ -59,31 +30,9 @@ export function initSessionRouting(storage: vscode.Memento): void {
 			lastUsedAt: entry.lastUsedAt,
 		});
 	}
-	const storedState = storage.get<Record<string, ResponsesConversationState>>(RESPONSES_STATE_KEY, {});
-	for (const [anchor, entry] of Object.entries(storedState ?? {})) {
-		if (!entry || typeof entry.responseId !== "string" || typeof entry.updatedAt !== "number") {
-			continue;
-		}
-		if (now - entry.updatedAt > SESSION_TTL_MS) {
-			continue;
-		}
-		if (!Array.isArray(entry.reasoning) || !entry.reasoning.every(isResponsesReasoningReplayItem)) {
-			continue;
-		}
-		_responsesState.set(anchor, {
-			responseId: entry.responseId,
-			reasoning: entry.reasoning.map((item) => ({
-				type: "reasoning" as const,
-				id: item.id,
-				summary: item.summary.filter(
-					(part): part is { type: "summary_text"; text: string } =>
-						!!part && typeof part === "object" && part.type === "summary_text" && typeof part.text === "string"
-				),
-				encrypted_content: item.encrypted_content,
-			})),
-			updatedAt: entry.updatedAt,
-		});
-	}
+	// Best-effort cleanup of the 0.5.2 chaining-state key (automatic
+	// `previous_response_id` chaining was removed in 0.5.3: relays reject it).
+	void Promise.resolve(storage.update("customoaicopilot.responsesState.v1", undefined)).catch(() => undefined);
 }
 
 function persist(): void {
@@ -95,11 +44,6 @@ function persist(): void {
 		snapshot[anchor] = { sessionId: entry.sessionId, lastUsedAt: entry.lastUsedAt };
 	}
 	void Promise.resolve(_storage.update(STORAGE_KEY, snapshot)).catch(() => undefined);
-	const stateSnapshot: Record<string, ResponsesConversationState> = {};
-	for (const [anchor, entry] of _responsesState) {
-		stateSnapshot[anchor] = { responseId: entry.responseId, reasoning: entry.reasoning, updatedAt: entry.updatedAt };
-	}
-	void Promise.resolve(_storage.update(RESPONSES_STATE_KEY, stateSnapshot)).catch(() => undefined);
 }
 
 function extractText(content: ReadonlyArray<unknown>): string {
@@ -227,97 +171,6 @@ export function rotateSessionId(modelId: string, messages: readonly vscode.Langu
 		store(anchorHash(modelId, userText, assistantText), newId);
 	}
 	return newId;
-}
-
-function responsesAnchor(
-	modelId: string,
-	messages: readonly vscode.LanguageModelChatRequestMessage[],
-	turnOutput?: string
-): string | null {
-	const userText = firstUserText(messages);
-	if (userText === null) {
-		return null;
-	}
-	const assistantText = firstAssistantText(messages) ?? turnOutput ?? null;
-	if (assistantText === null) {
-		return null;
-	}
-	return anchorHash(modelId, userText, assistantText);
-}
-
-function pruneResponsesState(): void {
-	while (_responsesState.size > MAX_SESSION_ENTRIES) {
-		const oldest = _responsesState.keys().next().value as string | undefined;
-		if (oldest === undefined) {
-			break;
-		}
-		_responsesState.delete(oldest);
-	}
-}
-
-/**
- * Read the last known server-side state for this Responses conversation.
- * The host never echoes our hidden DataParts back, so `previous_response_id`
- * chaining and encrypted-reasoning replay must be keyed locally by the same
- * session anchor instead of markers hidden in the message history.
- */
-export function getResponsesConversationState(
-	modelId: string,
-	messages: readonly vscode.LanguageModelChatRequestMessage[]
-): ResponsesConversationState | null {
-	const anchor = responsesAnchor(modelId, messages);
-	if (anchor === null) {
-		return null;
-	}
-	const existing = _responsesState.get(anchor);
-	if (!existing) {
-		return null;
-	}
-	if (Date.now() - existing.updatedAt > SESSION_TTL_MS) {
-		_responsesState.delete(anchor);
-		persist();
-		return null;
-	}
-	return existing;
-}
-
-/**
- * Persist the latest response id (and any encrypted reasoning items) after a
- * completed turn so the next turn can chain via `previous_response_id`.
- */
-export function saveResponsesConversationState(
-	modelId: string,
-	messages: readonly vscode.LanguageModelChatRequestMessage[],
-	turnOutput: string,
-	responseId: string,
-	reasoning: ResponsesConversationState["reasoning"]
-): void {
-	const anchor = responsesAnchor(modelId, messages, turnOutput);
-	if (anchor === null || !responseId) {
-		return;
-	}
-	_responsesState.delete(anchor);
-	_responsesState.set(anchor, {
-		responseId,
-		reasoning: reasoning.filter(isResponsesReasoningReplayItem),
-		updatedAt: Date.now(),
-	});
-	pruneResponsesState();
-	persist();
-}
-
-/** Drop locally stored Responses state (e.g. after rotating onto a fresh session). */
-export function clearResponsesConversationState(
-	modelId: string,
-	messages: readonly vscode.LanguageModelChatRequestMessage[]
-): void {
-	const anchor = responsesAnchor(modelId, messages);
-	if (anchor === null) {
-		return;
-	}
-	if (_responsesState.delete(anchor)) {
-		persist();
-	}
 }
 
 export function isUpstreamProviderFailureError(err: unknown): boolean {

@@ -76,9 +76,18 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 	private _responseCompleted = false;
 	private readonly _outputTextStreamNormalizer = new OutputTextStreamNormalizer();
 	private _capturedReasoningItems: ResponsesReasoningReplayItem[] = [];
+	/** Set once any text/thinking/tool output reached the UI this stream. */
+	private _streamProducedOutput = false;
+	/** Endpoint of the in-flight stream, for error messages. Set by the provider. */
+	private _lastStreamUrl: string | null = null;
 
 	constructor(modelId: string) {
 		super(modelId);
+	}
+
+	/** Record the request URL before streaming so stream errors can cite it. */
+	set lastStreamUrl(url: string | null) {
+		this._lastStreamUrl = url;
 	}
 
 	get responseId(): string | null {
@@ -334,6 +343,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 		this._responseId = null;
 		this._responseCompleted = false;
 		this._capturedReasoningItems = [];
+		this._streamProducedOutput = false;
 		const modelId = this._modelId;
 		logger.debug("responses.stream.start", { modelId });
 		const reader = responseBody.getReader();
@@ -394,6 +404,20 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			// Report accumulated usage for the Context Window widget
 			this.reportUsage(progress);
 		}
+
+		// Guard against "successful" empty streams: some relays answer HTTP 200
+		// with zero content events (e.g. after rejecting stateful chaining).
+		// Surfacing an error here lets Copilot retry/show failure instead of
+		// spinning on an empty turn. Cancellation is not an error.
+		const emittedToolCall = this._completedToolCallIndices.size > 0 || this._toolCallBuffers.size > 0;
+		if (!token.isCancellationRequested && !this._streamProducedOutput && !emittedToolCall && !this._responseCompleted) {
+			const err = new Error(
+				`Responses API error: stream ended without output (no text, thinking, or tool calls). URL: ${this._lastStreamUrl ?? "unknown"}`
+			);
+			(err as { status?: number }).status = 502;
+			logger.error("responses.stream.empty", { modelId });
+			throw err;
+		}
 	}
 
 	private coerceText(value: unknown): string {
@@ -439,6 +463,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 		if (!text) {
 			return;
 		}
+		this._streamProducedOutput = true;
 		// Process XML think blocks or text content (mutually exclusive)
 		const xmlRes = this.processXmlThinkBlocks(text, progress);
 		if (!xmlRes.emittedAny) {
@@ -460,6 +485,10 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 	): Promise<void> {
 		const eventType = typeof event.type === "string" ? event.type : "";
 		if (!eventType) {
+			// Some relays emit a bare `{"error": {...}}` payload without `type`.
+			if (event.error && typeof event.error === "object") {
+				this.throwStreamError(event);
+			}
 			return;
 		}
 
@@ -467,8 +496,11 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 
 		switch (eventType) {
 			case "error": {
-				const errorText = JSON.stringify(event);
-				console.error("[Custom OAI Provider] Responses API streaming process error:", errorText);
+				// Relays may answer HTTP 200 with an in-stream error payload instead
+				// of a 4xx (e.g. rejecting `previous_response_id`). Never swallow it:
+				// surface it so the provider can fall back instead of spinning on an
+				// empty turn.
+				this.throwStreamError(event);
 				return;
 			}
 
@@ -674,12 +706,30 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 				}
 				return;
 			}
-			case "response.incomplete":
-			case "response.failed": {
+			case "response.incomplete": {
 				this._responseCompleted = false;
 				return;
 			}
+			case "response.failed": {
+				this._responseCompleted = false;
+				this.throwStreamError(event);
+				return;
+			}
 		}
+	}
+
+	/**
+	 * Raise an in-stream failure as a `Responses API error` so callers can
+	 * distinguish it from parse noise (which stays non-fatal). Status 502
+	 * marks "upstream answered 200 but reported failure".
+	 */
+	private throwStreamError(event: Record<string, unknown>): never {
+		const errorText = JSON.stringify(event);
+		console.error("[Custom OAI Provider] Responses API streaming process error:", errorText);
+		logger.error("responses.stream.event.error", { modelId: this._modelId, error: errorText });
+		const err = new Error(`Responses API error: ${errorText}\nURL: ${this._lastStreamUrl ?? "unknown"}`);
+		(err as { status?: number }).status = 502;
+		throw err;
 	}
 
 	private captureResponseIdFromEvent(event: Record<string, unknown>): void {
@@ -717,6 +767,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			if (this.looksLikeReasoningConfigValue(chunk)) {
 				continue;
 			}
+			this._streamProducedOutput = true;
 			this.bufferThinkingContent(chunk, progress);
 			break;
 		}

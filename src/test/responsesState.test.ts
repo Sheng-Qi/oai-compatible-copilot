@@ -213,4 +213,79 @@ suite("ResponsesState", () => {
 		assert.strictEqual(body.thinking, undefined);
 		assert.strictEqual(body.enable_thinking, undefined);
 	});
+
+	test("surfaces in-stream error payloads instead of swallowing them", async () => {
+		// Relays may answer HTTP 200 with `{"error": {...}}` (no `type`).
+		const payload = `data: {"error":{"message":"previous_response_id requires an OpenAI API-key account","type":"invalid_request_error"}}\n\ndata: [DONE]\n\n`;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode(payload));
+				controller.close();
+			},
+		});
+		const api = new OpenaiResponsesApi("gpt-6.1-sol");
+		api.lastStreamUrl = "https://relay.example/v1/responses";
+		const cts = new vscode.CancellationTokenSource();
+		try {
+			await assert.rejects(
+				api.processStreamingResponse(stream, { report: () => undefined }, cts.token),
+				/Responses API error:.*previous_response_id/
+			);
+		} finally {
+			cts.dispose();
+		}
+	});
+
+	test("rejects empty streams that produced no output", async () => {
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+				controller.close();
+			},
+		});
+		const api = new OpenaiResponsesApi("gpt-6.1-sol");
+		api.lastStreamUrl = "https://relay.example/v1/responses";
+		const cts = new vscode.CancellationTokenSource();
+		try {
+			await assert.rejects(
+				api.processStreamingResponse(stream, { report: () => undefined }, cts.token),
+				/stream ended without output/
+			);
+		} finally {
+			cts.dispose();
+		}
+	});
+
+	test("accepts streams that produced text before completion", async () => {
+		const payload =
+			`data: {"type":"response.output_text.delta","delta":"hi"}\n\n` +
+			`data: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}\n\n` +
+			`data: [DONE]\n\n`;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode(payload));
+				controller.close();
+			},
+		});
+		const api = new OpenaiResponsesApi("gpt-6.1-sol");
+		const seen: string[] = [];
+		const cts = new vscode.CancellationTokenSource();
+		try {
+			await api.processStreamingResponse(
+				stream,
+				{
+					report: (part) => {
+						if (part instanceof vscode.LanguageModelTextPart) {
+							seen.push(part.value);
+						}
+					},
+				},
+				cts.token
+			);
+		} finally {
+			cts.dispose();
+		}
+		assert.ok(seen.join("").includes("hi"));
+		assert.strictEqual(api.responseCompleted, true);
+	});
 });

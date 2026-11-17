@@ -1,13 +1,6 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
-import {
-	clearResponsesConversationState,
-	getResponsesConversationState,
-	initSessionRouting,
-	registerSessionId,
-	resolveSessionId,
-	saveResponsesConversationState,
-} from "../sessionRouting";
+import { initSessionRouting, registerSessionId, resolveSessionId } from "../sessionRouting";
 
 function textMessage(role: number, text: string): vscode.LanguageModelChatRequestMessage {
 	return {
@@ -74,44 +67,5 @@ suite("SessionRouting", () => {
 		const reused = resolveSessionId("muse-spark-1.3-opencode", second);
 		assert.strictEqual(reused.registered, true);
 		assert.strictEqual(reused.sessionId, anchored.sessionId);
-	});
-
-	test("persists Responses chaining state across turns of one conversation", () => {
-		const storage = {
-			get: () => ({}),
-			update: async () => undefined,
-		} as unknown as vscode.Memento;
-		initSessionRouting(storage);
-		const first = [textMessage(1, "hello")];
-		assert.strictEqual(getResponsesConversationState("gpt-6.1-sol", first), null);
-		saveResponsesConversationState("gpt-6.1-sol", first, "hi there", "resp_abc", [
-			{
-				type: "reasoning",
-				id: "rs_1",
-				summary: [{ type: "summary_text", text: "thinking" }],
-				encrypted_content: "encrypted-state",
-			},
-		]);
-		const second = [textMessage(1, "hello"), textMessage(2, "hi there"), textMessage(1, "again")];
-		const chained = getResponsesConversationState("gpt-6.1-sol", second);
-		assert.ok(chained);
-		assert.strictEqual(chained.responseId, "resp_abc");
-		assert.strictEqual(chained.reasoning.length, 1);
-		assert.strictEqual(chained.reasoning[0].encrypted_content, "encrypted-state");
-
-		clearResponsesConversationState("gpt-6.1-sol", second);
-		assert.strictEqual(getResponsesConversationState("gpt-6.1-sol", second), null);
-	});
-
-	test("isolates Responses chaining state between conversations", () => {
-		const storage = {
-			get: () => ({}),
-			update: async () => undefined,
-		} as unknown as vscode.Memento;
-		initSessionRouting(storage);
-		const first = [textMessage(1, "same opener")];
-		saveResponsesConversationState("gpt-6.1-sol", first, "answer A", "resp_a", []);
-		const other = [textMessage(1, "same opener"), textMessage(2, "answer B"), textMessage(1, "follow up")];
-		assert.strictEqual(getResponsesConversationState("gpt-6.1-sol", other), null);
 	});
 });

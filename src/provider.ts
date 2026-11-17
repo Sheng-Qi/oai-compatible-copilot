@@ -35,15 +35,7 @@ import {
 	resolveProxyForModel,
 	selectProxyEntry,
 } from "./proxyConfig";
-import {
-	clearResponsesConversationState,
-	getResponsesConversationState,
-	isUpstreamProviderFailureError,
-	registerSessionId,
-	resolveSessionId,
-	rotateSessionId,
-	saveResponsesConversationState,
-} from "./sessionRouting";
+import { isUpstreamProviderFailureError, registerSessionId, resolveSessionId, rotateSessionId } from "./sessionRouting";
 
 /** Label used in logs when no proxy is applied. */
 const DIRECT_PROXY_LABEL = "direct";
@@ -66,7 +58,6 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 		this._onDidChangeLanguageModelChatInformation.event;
 
 	private readonly _geminiToolCallMetaByCallId = new Map<string, GeminiToolCallMeta>();
-	private readonly _openaiResponsesPreviousResponseIdUnsupportedBaseUrls = new Set<string>();
 
 	/**
 	 * Notify the workbench that this vendor's model list changed.
@@ -341,9 +332,6 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 				}
 				const previousSessionId = requestHeaders["x-opencode-session"];
 				requestHeaders["x-opencode-session"] = rotateSessionId(model.id, messages);
-				// A rotated session starts a fresh server-side conversation; drop any
-				// stored `previous_response_id` so the retry never chains onto it.
-				clearResponsesConversationState(model.id, messages);
 				logger.warn("request.sessionRotated", {
 					modelId: model.id,
 					previousSessionId,
@@ -457,41 +445,22 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 					await anthropicApi.processStreamingResponse(response.body, trackingProgress, token);
 					registerOpenCodeSessionIfNeeded();
 				} else if (apiMode === "openai-responses") {
-					// OpenAI Responses API mode
+					// OpenAI Responses API mode. Stateless full-history sends, Codex-style:
+					// no automatic `previous_response_id` chaining — relays in the wild
+					// (e.g. suixiang) answer HTTP 200 with an in-stream error instead of
+					// supporting server-side chaining, which previously caused 60-90s
+					// empty turns. A manual escape hatch stays via
+					// `extra: { previous_response_id }`, respected as-is.
 					const openaiResponsesApi = new OpenaiResponsesApi(model.id);
 					const normalizedBaseUrl = BASE_URL.replace(/\/+$/, "");
 
 					// Convert full history once (also extracts system `instructions`).
 					const fullInput = openaiResponsesApi.convertMessages(messages, modelConfig);
 
-					// Stateful chaining is keyed by the local session anchor: the host
-					// never echoes hidden DataParts back, so markers hidden in history
-					// can never be found on the next turn. Stored state also carries
-					// the last turn's encrypted reasoning for replay.
-					const storedState = !opencodeSessionEnabled ? getResponsesConversationState(model.id, messages) : null;
-					const gatewaySupportsPreviousResponseId =
-						!this._openaiResponsesPreviousResponseIdUnsupportedBaseUrls.has(normalizedBaseUrl);
-					const canUsePreviousResponseId =
-						!opencodeSessionEnabled &&
-						!!storedState?.responseId &&
-						gatewaySupportsPreviousResponseId &&
-						storedState.responseId.startsWith("resp_");
-
-					const input = canUsePreviousResponseId
-						? [
-								...(storedState?.reasoning ?? []).map((item) => ({
-									type: "reasoning" as const,
-									summary: item.summary,
-									encrypted_content: item.encrypted_content,
-								})),
-								...fullInput,
-							]
-						: fullInput;
-
 					// requestBody
 					let requestBody: Record<string, unknown> = {
 						model: parsedModelId.baseId,
-						input,
+						input: fullInput,
 						stream: true,
 					};
 
@@ -506,22 +475,16 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 						if (requestBody.store === undefined) {
 							requestBody.store = false;
 						}
-						delete requestBody.previous_response_id;
 					}
 
-					// If the user explicitly set `previous_response_id` via `extra`, respect it as-is.
-					let addedPreviousResponseId = false;
-					if (requestBody.previous_response_id === undefined && canUsePreviousResponseId) {
-						requestBody.previous_response_id = storedState!.responseId;
-						addedPreviousResponseId = true;
-					}
+					const manualPreviousResponseId =
+						typeof requestBody.previous_response_id === "string" && requestBody.previous_response_id.length > 0;
 
 					const url = `${normalizedBaseUrl}/responses`;
 					logger.info("request.responsesState", {
 						modelId: model.id,
 						opencodeSession: opencodeSessionEnabled,
-						usingPreviousResponseId: addedPreviousResponseId,
-						hasStoredReasoning: (storedState?.reasoning.length ?? 0) > 0,
+						manualPreviousResponseId,
 						cacheSessionRegistered: opencodeSessionEnabled ? session?.registered : responsesCacheSession?.registered,
 						proxy: chosenProxyLabel,
 						timeoutMs: requestTimeoutMs,
@@ -541,10 +504,13 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 							return res;
 						}, retryConfig);
 
-					const buildFallbackBody = (plainInput: boolean): Record<string, unknown> => {
+					// Strict relays may reject the `include: ["reasoning.encrypted_content"]`
+					// parameter. On a client error, retry once without it — the fallback
+					// wire shape is then plain Codex-style input.
+					const buildFallbackBody = (): Record<string, unknown> => {
 						let fallbackBody: Record<string, unknown> = {
 							model: parsedModelId.baseId,
-							input: plainInput || !canUsePreviousResponseId ? fullInput : input,
+							input: fullInput,
 							stream: true,
 						};
 						fallbackBody = openaiResponsesApi.prepareRequestBody(fallbackBody, um, options);
@@ -553,82 +519,66 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 								? session!.sessionId
 								: `oaicopilot-${parsedModelId.baseId}-${responsesCacheSession!.sessionId}`;
 						}
+						delete fallbackBody.include;
 						return fallbackBody;
 					};
+					const isClientErrorStatus = (status: unknown): boolean =>
+						typeof status === "number" && status >= 400 && status < 500 && status !== 429;
 
 					let response: Response;
 					try {
 						response = await sendWithSessionFallback(() => sendRequest(requestBody));
 					} catch (err) {
-						// Some Responses-compatible gateways reject stateful/encrypted-reasoning
-						// parameters. Fall back in two stages: first drop `previous_response_id`
-						// (the most likely offender, keeping the stored prefix); if the retry
-						// still 4xx, also drop `include` and the replayed reasoning items —
-						// then the wire shape is plain Codex-style input.
 						const status = (err as { status?: unknown })?.status;
-						const isClientError = typeof status === "number" && status >= 400 && status < 500 && status !== 429;
-						if (!isClientError) {
+						if (!isClientErrorStatus(status) || requestBody.include === undefined) {
 							throw err;
 						}
-
-						let fallbackBody = buildFallbackBody(false);
-						const dropped: string[] = [];
-						if (addedPreviousResponseId) {
-							this._openaiResponsesPreviousResponseIdUnsupportedBaseUrls.add(normalizedBaseUrl);
-							delete fallbackBody.previous_response_id;
-							clearResponsesConversationState(model.id, messages);
-							dropped.push("previous_response_id");
-						} else if (fallbackBody.include !== undefined) {
-							delete fallbackBody.include;
-							dropped.push("include");
-						} else {
-							throw err;
-						}
+						const fallbackBody = buildFallbackBody();
 						logger.warn("request.responsesFallback", {
 							modelId: model.id,
 							status,
-							dropped,
+							dropped: ["include"],
 						});
-						try {
-							response = await sendRequest(fallbackBody);
-						} catch (retryErr) {
-							const retryStatus = (retryErr as { status?: unknown })?.status;
-							const retryIsClientError =
-								typeof retryStatus === "number" && retryStatus >= 400 && retryStatus < 500 && retryStatus !== 429;
-							if (!retryIsClientError) {
-								throw retryErr;
-							}
-							fallbackBody = buildFallbackBody(true);
-							delete fallbackBody.previous_response_id;
-							delete fallbackBody.include;
-							logger.warn("request.responsesFallback", {
-								modelId: model.id,
-								status: retryStatus,
-								dropped: [...dropped, "include", "replayed_reasoning"],
-							});
-							response = await sendRequest(fallbackBody);
-						}
+						response = await sendRequest(fallbackBody);
 					}
 
 					if (!response.body) {
 						throw new Error("No response body from Responses API");
 					}
-					await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
-
-					const capturedReasoning = openaiResponsesApi.takeCapturedReasoningItems();
-					for (const item of capturedReasoning) {
-						trackingProgress.report(createResponsesReasoningPart(item));
+					openaiResponsesApi.lastStreamUrl = url;
+					try {
+						await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
+					} catch (streamErr) {
+						// Relays that reject `include` answer HTTP 200 with an in-stream
+						// error payload. Retry once against a fresh stream without it.
+						const status = (streamErr as { status?: unknown })?.status;
+						if (
+							streamErr instanceof Error &&
+							/Responses API error:/.test(streamErr.message) &&
+							status === 502 &&
+							requestBody.include !== undefined &&
+							!token.isCancellationRequested
+						) {
+							const fallbackBody = buildFallbackBody();
+							logger.warn("request.responsesFallback", {
+								modelId: model.id,
+								status,
+								dropped: ["include"],
+								afterStreamError: true,
+							});
+							response = await sendRequest(fallbackBody);
+							if (!response.body) {
+								throw new Error("No response body from Responses API");
+							}
+							openaiResponsesApi.lastStreamUrl = url;
+							await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
+						} else {
+							throw streamErr;
+						}
 					}
 
-					const responseId = openaiResponsesApi.responseId;
-					if (!opencodeSessionEnabled && responseId) {
-						saveResponsesConversationState(
-							model.id,
-							messages,
-							collectedOutputText.join(""),
-							responseId,
-							capturedReasoning
-						);
+					for (const item of openaiResponsesApi.takeCapturedReasoningItems()) {
+						trackingProgress.report(createResponsesReasoningPart(item));
 					}
 					registerOpenCodeSessionIfNeeded();
 				} else if (apiMode === "gemini") {

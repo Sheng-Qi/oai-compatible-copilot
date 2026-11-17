@@ -1,5 +1,12 @@
 # Change Log
 
+## 0.5.3 (2026-11-17)
+
+- Fix(stall): remove automatic `previous_response_id` chaining — relays in the wild (verified: suixiang answers HTTP 200 with `previous_response_id requires an OpenAI API-key account` instead of supporting server-side chaining), which caused 60–90s empty turns on every chained request. Responses is now stateless full-history like Codex; the byte-stable input from 0.5.2 is kept, so prefix caching still applies. A manual escape hatch stays via `extra: { previous_response_id }`.
+- Fix(stream): in-stream `{"error": ...}` payloads (with or without `type`) and `response.failed` now throw `Responses API error` instead of being swallowed, and streams that end with zero text/thinking/tool output now fail instead of reporting fake success — Copilot retries or shows failure instead of spinning on empty turns.
+- Fix(fallback): when a strict relay rejects `include: ["reasoning.encrypted_content"]` (HTTP 4xx or in-stream 200-error), retry once against a fresh stream without it. `include` itself is kept: verified accepted by suixiang.
+- Chore: drop the 0.5.2 chaining-state store in `sessionRouting` (stale `customoaicopilot.responsesState.v1` keys are cleaned on next init).
+
 ## 0.5.2 (2026-11-17)
 
 - Fix(cache): `openai-responses` input is now byte-stable across turns for every model (previously only `opencodeSession` models were). Per-request `msg_/tk_/fco_` ids, `status` fields, and the last-user-message `incomplete` flip — inherited from upstream `7a6bd09` — poisoned the prompt-cache prefix on each turn, so router models like `gpt-6.1-sol` paid full input tokens every request while Codex (clean input shape) hit cache. The wire shape now matches Codex: only `role/content/call_id/name/arguments/summary/encrypted_content`, plus a regression test asserting identical history serializes identically.
