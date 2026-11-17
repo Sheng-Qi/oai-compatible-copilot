@@ -562,7 +562,7 @@ VS Code Copilot 针对特定模型优化了系统提示词。[详细介绍](http
   - `max_tokens`：推理的特定 token 限制（Anthropic 风格，作为 effort 的替代方案）
 - `thinking`：Zai 供应商的思维链配置
   - `type`：设为 'enabled' 开启思维链，'disabled' 关闭思维链
-- `service_tier`：OpenAI Chat Completions / Responses 请求的默认服务层级（`default` / `fast`）。GPT-6+ 模型还会在 Copilot 中显示下拉框，可按请求切换 Fast 模式而无需更换模型（会话上下文保留）。留空则不发送该参数。
+- `service_tier`：0.5.0 起废弃并被忽略。层级现为全局配置——见下文 `oaicopilot.serviceTier`。（无关项：Anthropic 自身的 `service_tier: standard_only` 仍可经 `extra` 发送。）
 - `reasoning_effort`：推理力度级别（OpenAI 推理配置）
 - `headers`：发送到此模型供应商的自定义 HTTP 请求头（如 `{"X-API-Version": "v1", "X-Custom-Header": "value"}`）。将与默认请求头（Authorization、Content-Type、User-Agent）合并
 - `proxy`：模型专属代理（可选）：代理 URL、`oaicopilot.proxies` 中的配置名、逗号/空格分隔的故障转移列表（`'primary, fallback, direct'`）或关键字 `direct`。为空时回退到全局 `oaicopilot.proxy`。
@@ -571,6 +571,10 @@ VS Code Copilot 针对特定模型优化了系统提示词。[详细介绍](http
 - `apiMode`：API 模式：'openai'（默认）对应 API（/chat/completions），'openai-responses' 对应 API（/responses），'ollama' 对应 API（/api/chat），'anthropic' 对应 API（/v1/messages），'gemini' 对应 API（/v1beta/models/{model}:streamGenerateContent?alt=sse）。
 - `delay`：连续请求之间的模型专属延迟（毫秒）。未指定时回退到全局 `oaicopilot.delay` 配置。
 - `useForCommitGeneration`：是否用于 Git 提交信息生成。不支持 gemini apiMode。
+
+## 全局配置
+
+- `oaicopilot.serviceTier`：OpenAI Chat Completions / Responses 上 GPT-6+ 模型的全局服务层级（`default` / `fast`）。`fast` 以更高成本换取更低延迟。可经命令面板（`CustomOAICopilot: Switch Service Tier`）快速切换，下一次请求即生效。非 GPT-6 模型永远不会收到该参数。支持按机器/按远端覆盖。想固定单个模型可用其 `extra: { "service_tier": "fast" }`。
 
 ## 致谢
 

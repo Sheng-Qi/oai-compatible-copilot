@@ -1,4 +1,4 @@
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 import type { HFModelItem } from "./types";
 
 export type ReasoningEffortPickerValue = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -44,41 +44,24 @@ export function createReasoningEffortConfigurationSchema(defaultValue: Reasoning
 	} as const;
 }
 
-export type ServiceTierPickerValue = "default" | "fast";
+export type ServiceTierValue = "default" | "fast";
 
-const SERVICE_TIER_VALUES: readonly ServiceTierPickerValue[] = ["default", "fast"];
+const SERVICE_TIER_VALUES: readonly ServiceTierValue[] = ["default", "fast"];
 
-// NOTE: VS Code renders at most one `configurationSchema` property per group
-// (`getModelConfigProperty` returns the first match per group, with alias
-// precedence for known keys). Reasoning effort already occupies the
-// `navigation` (effort) slot, so the tier picker reuses the `tokens`
-// (context) slot and both render side by side. Safe: context-window math
-// only reads the literal `contextSize` key, and the context-size request
-// override lives on the Copilot (CAPI) path, neither of which sees `serviceTier`.
-export const SERVICE_TIER_CONFIGURATION_SCHEMA = {
-	properties: {
-		serviceTier: {
-			type: "string",
-			title: "Service Tier",
-			enum: SERVICE_TIER_VALUES,
-			// Labels only; the wire values stay "default"/"fast" (see ServiceTierPickerValue).
-			enumItemLabels: ["Standard", "Fast"],
-			enumDescriptions: ["Standard pricing and performance", "Fast mode: lower latency at higher cost"],
-			default: "default",
-			group: "tokens",
-		},
-	},
-} as const;
+export function isServiceTierValue(value: unknown): value is ServiceTierValue {
+	return typeof value === "string" && SERVICE_TIER_VALUES.includes(value as ServiceTierValue);
+}
 
-export function createServiceTierConfigurationSchema(defaultValue: ServiceTierPickerValue) {
-	return {
-		properties: {
-			serviceTier: {
-				...SERVICE_TIER_CONFIGURATION_SCHEMA.properties.serviceTier,
-				default: defaultValue,
-			},
-		},
-	} as const;
+/**
+ * Global service tier for OpenAI Chat Completions / Responses requests.
+ * Read live from `oaicopilot.serviceTier` (default `"default"`) at request time,
+ * so the Command Palette switch takes effect on the next request without a reload.
+ * Per-machine/per-remote overrides via VS Code settings scopes are honored
+ * because the merged configuration value is used.
+ */
+export function getGlobalServiceTier(): ServiceTierValue {
+	const configured = vscode.workspace.getConfiguration().get<unknown>("oaicopilot.serviceTier", "default");
+	return isServiceTierValue(configured) ? configured : "default";
 }
 
 export type ModelConfigurationOptions = vscode.ProvideLanguageModelChatResponseOptions & {
@@ -137,7 +120,7 @@ export function isReasoningEffortValue(value: unknown): value is ReasoningEffort
  * that currently supports the Fast service tier. Matches ids like `gpt-6`,
  * `gpt-6.1-sol`, `gpt-7-mini`.
  */
-export function isGpt6OrNewer(model: HFModelItem | undefined): boolean {
+function isGpt6OrNewer(model: HFModelItem | undefined): boolean {
 	const id = model?.id?.trim() ?? "";
 	const match = /^gpt-(\d+)/i.exec(id);
 	if (!match) {
@@ -146,25 +129,11 @@ export function isGpt6OrNewer(model: HFModelItem | undefined): boolean {
 	return Number.parseInt(match[1], 10) >= 6;
 }
 
-export function isServiceTierPickerEnabled(
-	model: HFModelItem | undefined
-): model is HFModelItem & { service_tier: ServiceTierPickerValue } {
-	return isGpt6OrNewer(model) && isServiceTierValue(model?.service_tier);
-}
-
-export function getConfiguredServiceTier(
-	options: vscode.ProvideLanguageModelChatResponseOptions | undefined,
-	fallback: ServiceTierPickerValue = "default"
-): ServiceTierPickerValue {
-	const modelOptions = options as ModelConfigurationOptions | undefined;
-	const configuredTier = modelOptions?.modelConfiguration?.serviceTier ?? modelOptions?.configuration?.serviceTier;
-
-	if (isServiceTierValue(configuredTier)) {
-		return configuredTier;
-	}
-	return fallback;
-}
-
-export function isServiceTierValue(value: unknown): value is ServiceTierPickerValue {
-	return typeof value === "string" && SERVICE_TIER_VALUES.includes(value as ServiceTierPickerValue);
+/**
+ * Resolve the `service_tier` wire value for an OpenAI request, or `undefined`
+ * to omit the parameter. Only GPT-6+ models get the global tier; everything
+ * else is untouched so non-supporting models never see the parameter.
+ */
+export function resolveServiceTier(model: HFModelItem | undefined): ServiceTierValue | undefined {
+	return isGpt6OrNewer(model) ? getGlobalServiceTier() : undefined;
 }

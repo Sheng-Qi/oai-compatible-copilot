@@ -33,6 +33,13 @@ export interface HFModelItem {
 	// OpenAI new standard parameter
 	max_completion_tokens?: number;
 	reasoning_effort?: string;
+	/**
+	 * @deprecated Since 0.5.0: per-model tiers caused cross-session leakage
+	 * (VS Code stores picker values per model globally, and the Agents-window
+	 * BYOK bridge drops unknown keys). Ignored now. Set the global
+	 * `oaicopilot.serviceTier` instead (`CustomOAICopilot: Switch Service Tier`
+	 * command), or pin one model via `extra: { service_tier: "fast" }`.
+	 */
 	service_tier?: string;
 	enable_thinking?: boolean;
 	thinking_budget?: number;

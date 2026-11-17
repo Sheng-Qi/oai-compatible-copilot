@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.5.0 (2026-11-17)
+
+- Fix(session): `openai-responses` now uses a stable per-conversation `prompt_cache_key` (via the existing session-anchor mechanism) instead of one model-wide key, so different conversations no longer share/poison each other's prompt cache. `opencodeSession` models keep their session id as before; `extra.prompt_cache_key` still overrides.
+- Fix(tier): remove the per-model `service_tier` Copilot picker — VS Code stores picker values per model globally (and the Agents-window BYOK bridge drops unknown keys), so switching tiers in one session leaked into all others. The tier is now a single global `oaicopilot.serviceTier` (`default` / `fast`, GPT-6+ only), switchable from the Command Palette (`CustomOAICopilot: Switch Service Tier`) or the Configuration UI, effective on the next request. Per-model `service_tier` is deprecated and ignored; pin one model via `extra: { "service_tier": "fast" }` if needed.
+
 ## 0.4.11 (2026-11-11)
 
 - Polish(openai): service tier picker label `Default` → `Standard` (inline readout now shows e.g. `Medium · Standard`; wire value stays `default`). Model tooltip now includes the context length (e.g. `openai (CustomOAI) · 128.0K context`) since the tier picker occupies the picker's context slot on GPT-6+ models.

@@ -34,6 +34,17 @@
 					<input id="delay" type="number" min="0" placeholder="0" />
 				</div>
 				<div class="field">
+					<label for="serviceTier">Service Tier (GPT-6+ Fast Mode)</label>
+					<div class="field-description">
+						Global OpenAI service tier for GPT-6+ models. Fast trades higher cost for lower latency. Also switchable via
+						the Command Palette (CustomOAICopilot: Switch Service Tier).
+					</div>
+					<select id="serviceTier" class="model-input">
+						<option value="default">Standard</option>
+						<option value="fast">Fast</option>
+					</select>
+				</div>
+				<div class="field">
 					<label for="readFileLines">Read File Lines</label>
 					<div class="field-description">
 						Number of lines to read when using `read_file` tool. Large lines may cost more tokens. Default is 0, let
@@ -390,18 +401,6 @@
 										<option value=""></option>
 										<option value="true">True</option>
 										<option value="false">False</option>
-									</select>
-								</div>
-								<div class="field">
-									<label for="modelServiceTier">Service Tier (Fast Mode)</label>
-									<div class="field-description">
-										Default OpenAI service tier. GPT-6+ models get a Copilot picker to switch Fast without changing
-										models. Leave empty to omit the parameter.
-									</div>
-									<select id="modelServiceTier" class="model-input">
-										<option value=""></option>
-										<option value="default">Default</option>
-										<option value="fast">Fast</option>
 									</select>
 								</div>
 								<div class="field">

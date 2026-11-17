@@ -6,6 +6,7 @@ import { ConfigViewPanel } from "./views/configView";
 import { logger } from "./logger";
 import { normalizeUserModels } from "./utils";
 import { initSessionRouting } from "./sessionRouting";
+import { getGlobalServiceTier } from "./modelConfiguration";
 import { abortCommitGeneration, generateCommitMsg } from "./gitCommit/commitMessageGenerator";
 import { TokenizerManager } from "./tokenizer/tokenizerManager";
 
@@ -118,6 +119,41 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("custom-oaicopilot.openConfig", async () => {
 			ConfigViewPanel.openPanel(context.extensionUri, context.secrets);
+		})
+	);
+
+	// Switch the global OpenAI service tier (Standard / Fast) for GPT-6+ models.
+	// Takes effect on the next request; per-machine overrides via settings scopes still win.
+	context.subscriptions.push(
+		vscode.commands.registerCommand("custom-oaicopilot.switchServiceTier", async () => {
+			const current = getGlobalServiceTier();
+			const picked = await vscode.window.showQuickPick(
+				[
+					{
+						label: "Standard",
+						description: "default",
+						detail: "Standard pricing and performance",
+						value: "default",
+					},
+					{
+						label: "Fast",
+						description: "fast",
+						detail: "Lower latency at higher cost",
+						value: "fast",
+					},
+				],
+				{
+					title: "Custom OAI Service Tier",
+					placeHolder: `Current: ${current === "fast" ? "Fast" : "Standard"} — pick a tier for GPT-6+ models`,
+				}
+			);
+			if (!picked) {
+				return; // user canceled
+			}
+			await vscode.workspace
+				.getConfiguration()
+				.update("oaicopilot.serviceTier", picked.value, vscode.ConfigurationTarget.Global);
+			vscode.window.showInformationMessage(`Custom OAI service tier: ${picked.label}.`);
 		})
 	);
 

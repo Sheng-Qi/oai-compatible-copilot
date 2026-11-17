@@ -5,10 +5,8 @@ import type { HFApiMode, HFModelItem, HFModelsResponse } from "./types";
 import {
 	createModelConfigurationSchema,
 	createReasoningEffortConfigurationSchema,
-	createServiceTierConfigurationSchema,
 	type ModelPickerChatInformation,
 	isReasoningEffortValue,
-	isServiceTierPickerEnabled,
 } from "./modelConfiguration";
 import { normalizeUserModels } from "./utils";
 import { formatTokenCount } from "./statusBar";
@@ -50,13 +48,10 @@ export async function prepareLanguageModelChatInformation(
 				const modelId = m.configId ? `${m.id}::${m.configId}` : m.id;
 				const modelName = m.displayName || (m.configId ? `${m.id}::${m.configId}` : `${m.id}`);
 				const detail = m.owned_by ? `${m.owned_by} (${EXTENSION_LABEL})` : EXTENSION_LABEL;
-				// The service-tier picker occupies the `tokens` (context) slot on GPT-6+ models,
-				// displacing the context-window readout there; keep the length visible on hover.
+				// Keep the context length visible on hover.
 				const tooltip = `${detail} · ${formatTokenCount(contextLen)} context`;
 				const reasoningEffort = isReasoningEffortValue(m.reasoning_effort) ? m.reasoning_effort : undefined;
-				const serviceTier = isServiceTierPickerEnabled(m) ? m.service_tier : undefined;
 				const configurationSchema = createModelConfigurationSchema([
-					...(serviceTier ? [createServiceTierConfigurationSchema(serviceTier)] : []),
 					...(reasoningEffort ? [createReasoningEffortConfigurationSchema(reasoningEffort)] : []),
 				]);
 

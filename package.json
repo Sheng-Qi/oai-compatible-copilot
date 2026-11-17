@@ -25,7 +25,7 @@
 		"type": "git",
 		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 	},
-	"version": "0.4.11",
+	"version": "0.5.0",
 	"engines": {
 		"vscode": "^1.120.0"
 	},
@@ -70,6 +70,11 @@
 				"command": "custom-oaicopilot.openConfig",
 				"category": "CustomOAICopilot",
 				"title": "Open Configuration UI"
+			},
+			{
+				"command": "custom-oaicopilot.switchServiceTier",
+				"category": "CustomOAICopilot",
+				"title": "Switch Service Tier (Standard / Fast)"
 			},
 			{
 				"command": "custom-oaicopilot.generateGitCommitMessage",
@@ -127,6 +132,15 @@
 					"type": "string",
 					"default": "https://router.huggingface.co/v1",
 					"description": "The base URL for the Openai Compatible Inference API. Default value is Hugging Face."
+				},
+				"oaicopilot.serviceTier": {
+					"type": "string",
+					"default": "default",
+					"enum": [
+						"default",
+						"fast"
+					],
+					"description": "Global service tier for GPT-6+ models on OpenAI Chat Completions / Responses. 'fast' trades higher cost for lower latency. Switch quickly via the 'CustomOAICopilot: Switch Service Tier' command. Can be overridden per machine/remote. A single model can still be pinned via its extra: { \"service_tier\": \"fast\" }."
 				},
 				"oaicopilot.proxies": {
 					"type": "array",
@@ -231,15 +245,6 @@
 								"minimum": 1,
 								"maximum": 10000000,
 								"description": "Maximum number of tokens to generate (OpenAI new standard parameter)."
-							},
-							"service_tier": {
-								"type": "string",
-								"default": "default",
-								"enum": [
-									"default",
-									"fast"
-								],
-								"description": "Default service tier for OpenAI Chat Completions / Responses requests. GPT-6+ models also get a Copilot picker to switch Fast mode without changing models. Leave empty to omit the parameter."
 							},
 							"reasoning_effort": {
 								"type": "string",

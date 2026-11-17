@@ -563,7 +563,7 @@ All parameters support individual configuration for different models, providing 
 - `thinking`: Thinking configuration for Zai provider
   - `type`: Set to 'enabled' to enable thinking, 'disabled' to disable thinking
 - `reasoning_effort`: Reasoning effort level (OpenAI reasoning configuration)
-- `service_tier`: Default service tier (`default` / `fast`) for OpenAI Chat Completions / Responses requests. GPT-6+ models also get a Copilot picker to switch Fast mode per request without changing models (session context is preserved). Leave empty to omit the parameter.
+- `service_tier`: Deprecated since 0.5.0 and ignored. The tier is now global — see `oaicopilot.serviceTier` below. (Unrelated: Anthropic's own `service_tier: standard_only` can still be sent via `extra`.)
 - `headers`: Custom HTTP headers to be sent with every request to this model's provider (e.g., `{"X-API-Version": "v1", "X-Custom-Header": "value"}`). These headers will be merged with the default headers (Authorization, Content-Type, User-Agent)
 - `proxy`: Optional per-model proxy: a proxy URL, a profile name from `oaicopilot.proxies`, a comma/space-separated failover list (`'primary, fallback, direct'`), or the keyword `direct`. Empty falls back to the global `oaicopilot.proxy` setting.
 - `extra`: Extra request body parameters.
@@ -571,6 +571,10 @@ All parameters support individual configuration for different models, providing 
 - `apiMode`: API mode: 'openai' (Default) for API (/chat/completions), 'openai-responses' for API (/responses), 'ollama' for API (/api/chat), 'anthropic' for API (/v1/messages), 'gemini' for API (/v1beta/models/{model}:streamGenerateContent?alt=sse).
 - `delay`: Model-specific delay in milliseconds between consecutive requests. If not specified, falls back to global `oaicopilot.delay` configuration.
 - `useForCommitGeneration`: Whether to be used for Git commit message generation. Not supports gemini apiMode.
+
+## Global Settings
+
+- `oaicopilot.serviceTier`: Global service tier (`default` / `fast`) for GPT-6+ models on OpenAI Chat Completions / Responses. `fast` trades higher cost for lower latency. Switch quickly via the Command Palette (`CustomOAICopilot: Switch Service Tier`); takes effect on the next request. Non-GPT-6 models never receive the parameter. Per-machine/per-remote overrides via settings scopes are honored. To pin a single model, use its `extra: { "service_tier": "fast" }`.
 
 ## Thanks to
 

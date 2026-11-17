@@ -10,9 +10,8 @@ import {
 import type { HFModelItem, ReasoningConfig, TokenUsage } from "../types";
 import {
 	getConfiguredReasoningEffort,
-	getConfiguredServiceTier,
 	isReasoningEffortPickerEnabled,
-	isServiceTierPickerEnabled,
+	resolveServiceTier,
 } from "../modelConfiguration";
 
 import type {
@@ -184,11 +183,12 @@ export class OpenaiApi extends CommonApi<OpenAIChatMessage, Record<string, unkno
 			rb.reasoning_effort = um.reasoning_effort;
 		}
 
-		// OpenAI service tier (Fast mode switch; the Copilot picker only shows for GPT-6+)
-		if (isServiceTierPickerEnabled(um)) {
-			rb.service_tier = getConfiguredServiceTier(options, um.service_tier);
-		} else if (um?.service_tier !== undefined) {
-			rb.service_tier = um.service_tier;
+		// OpenAI service tier (global `oaicopilot.serviceTier`, GPT-6+ only).
+		// A per-model escape hatch stays available via `extra: { service_tier }`,
+		// which is merged below and overwrites this value.
+		const serviceTier = resolveServiceTier(um);
+		if (serviceTier !== undefined) {
+			rb.service_tier = serviceTier;
 		}
 
 		// enable_thinking (non-OpenRouter only, same as upstream: opt-in, no default)

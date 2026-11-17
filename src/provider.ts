@@ -242,6 +242,12 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 			const retryConfig = createRetryConfig();
 			const opencodeSessionEnabled = um?.opencodeSession === true;
 			const session = opencodeSessionEnabled ? resolveSessionId(model.id, messages) : undefined;
+			// The Responses API needs a stable per-conversation `prompt_cache_key`
+			// even without the opencode session contract (a model-wide key lets
+			// different conversations share/poison each other's cache). Resolve one
+			// through the same anchor mechanism, but never send it as a header.
+			const responsesCacheSession =
+				!opencodeSessionEnabled && apiMode === "openai-responses" ? resolveSessionId(model.id, messages) : undefined;
 			const opencodeExtraHeaders: Record<string, string> | undefined = opencodeSessionEnabled
 				? {
 						"x-opencode-request": `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -357,6 +363,9 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 			const registerOpenCodeSessionIfNeeded = (): void => {
 				if (opencodeSessionEnabled && session && !session.registered) {
 					registerSessionId(model.id, messages, collectedOutputText.join(""), requestHeaders["x-opencode-session"]);
+				}
+				if (!opencodeSessionEnabled && responsesCacheSession && !responsesCacheSession.registered) {
+					registerSessionId(model.id, messages, collectedOutputText.join(""), responsesCacheSession.sessionId);
 				}
 			};
 
@@ -480,7 +489,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 					if (!requestBody.prompt_cache_key) {
 						requestBody.prompt_cache_key = opencodeSessionEnabled
 							? session!.sessionId
-							: `oaicopilot-${parsedModelId.baseId}`;
+							: `oaicopilot-${parsedModelId.baseId}-${responsesCacheSession!.sessionId}`;
 					}
 					if (opencodeSessionEnabled) {
 						if (requestBody.store === undefined) {
@@ -503,6 +512,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 						modelId: model.id,
 						opencodeSession: opencodeSessionEnabled,
 						usingPreviousResponseId: addedPreviousResponseId,
+						cacheSessionRegistered: opencodeSessionEnabled ? session?.registered : responsesCacheSession?.registered,
 						proxy: chosenProxyLabel,
 						timeoutMs: requestTimeoutMs,
 					});
@@ -543,7 +553,9 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 						};
 						fallbackBody = openaiResponsesApi.prepareRequestBody(fallbackBody, um, options);
 						if (!fallbackBody.prompt_cache_key) {
-							fallbackBody.prompt_cache_key = `oaicopilot-${parsedModelId.baseId}`;
+							fallbackBody.prompt_cache_key = opencodeSessionEnabled
+								? session!.sessionId
+								: `oaicopilot-${parsedModelId.baseId}-${responsesCacheSession!.sessionId}`;
 						}
 						delete fallbackBody.previous_response_id;
 						logger.warn("request.previousResponseFallback", {

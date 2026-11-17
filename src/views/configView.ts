@@ -9,6 +9,7 @@ interface InitPayload {
 	baseUrl: string;
 	apiKey: string;
 	delay: number;
+	serviceTier: string;
 	readFileLines: number;
 	proxySpec: string;
 	proxyProfiles: ProxyProfile[];
@@ -30,6 +31,7 @@ interface ExportConfig {
 	baseUrl: string;
 	apiKey: string;
 	delay: number;
+	serviceTier: string;
 	proxySpec: string;
 	proxyProfiles: ProxyProfile[];
 	retry: {
@@ -52,6 +54,7 @@ type IncomingMessage =
 			baseUrl: string;
 			apiKey: string;
 			delay: number;
+			serviceTier: string;
 			readFileLines: number;
 			proxySpec: string;
 			proxyProfilesRaw: string;
@@ -180,6 +183,7 @@ export class ConfigViewPanel {
 					message.baseUrl,
 					message.apiKey,
 					message.delay,
+					message.serviceTier,
 					message.readFileLines,
 					message.proxySpec,
 					message.proxyProfilesRaw,
@@ -294,10 +298,12 @@ export class ConfigViewPanel {
 		const commitModel = foundModel ? `${foundModel.id}${foundModel.configId ? "::" + foundModel.configId : ""}` : "";
 		const commitLanguage = config.get<string>("oaicopilot.commitLanguage", "English");
 		const readFileLines = config.get<number>("oaicopilot.readFileLines", 0);
+		const serviceTier = config.get<string>("oaicopilot.serviceTier", "default");
 		const payload: InitPayload = {
 			baseUrl,
 			apiKey,
 			delay,
+			serviceTier,
 			readFileLines,
 			proxySpec,
 			proxyProfiles,
@@ -314,6 +320,7 @@ export class ConfigViewPanel {
 		rawBaseUrl: string,
 		rawApiKey: string,
 		delay: number,
+		serviceTier: string,
 		readFileLines: number,
 		rawProxySpec: string,
 		rawProxyProfiles: string,
@@ -337,6 +344,11 @@ export class ConfigViewPanel {
 		await config.update("oaicopilot.proxies", proxyProfiles.value, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.baseUrl", baseUrl, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.delay", delay, vscode.ConfigurationTarget.Global);
+		await config.update(
+			"oaicopilot.serviceTier",
+			serviceTier === "fast" ? "fast" : "default",
+			vscode.ConfigurationTarget.Global
+		);
 		await config.update("oaicopilot.readFileLines", readFileLines, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.retry", retry, vscode.ConfigurationTarget.Global);
 		await config.update("oaicopilot.commitLanguage", commitLanguage, vscode.ConfigurationTarget.Global);
@@ -600,6 +612,7 @@ export class ConfigViewPanel {
 			});
 			const commitLanguage = config.get<string>("oaicopilot.commitLanguage", "English");
 			const readFileLines = config.get<number>("oaicopilot.readFileLines", 0);
+			const serviceTier = config.get<string>("oaicopilot.serviceTier", "default");
 			const models = normalizeUserModels(config.get<unknown>("oaicopilot.models", []));
 			const proxySpec = config.get<string>("oaicopilot.proxy", "");
 			const proxyProfiles = normalizeProxyProfiles(config.get<unknown>("oaicopilot.proxies", [])).profiles;
@@ -623,6 +636,7 @@ export class ConfigViewPanel {
 				baseUrl,
 				apiKey,
 				delay,
+				serviceTier,
 				proxySpec,
 				proxyProfiles,
 				retry,
@@ -682,6 +696,9 @@ export class ConfigViewPanel {
 
 			await config.update("oaicopilot.baseUrl", importData.baseUrl, vscode.ConfigurationTarget.Global);
 			await config.update("oaicopilot.delay", importData.delay, vscode.ConfigurationTarget.Global);
+			if (importData.serviceTier === "fast" || importData.serviceTier === "default") {
+				await config.update("oaicopilot.serviceTier", importData.serviceTier, vscode.ConfigurationTarget.Global);
+			}
 			await config.update("oaicopilot.retry", importData.retry, vscode.ConfigurationTarget.Global);
 			await config.update("oaicopilot.readFileLines", importData.readFileLines, vscode.ConfigurationTarget.Global);
 			await config.update("oaicopilot.commitLanguage", importData.commitLanguage, vscode.ConfigurationTarget.Global);
