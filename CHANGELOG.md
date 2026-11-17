@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.5.1 (2026-11-17)
+
+- Feat(tier): status bar indicator for the global service tier (`OAI: Std` / `$(zap) OAI: Fast` with warning background on Fast). Hover shows the tier detail; clicking opens the tier switcher.
+
 ## 0.5.0 (2026-11-17)
 
 - Fix(session): `openai-responses` now uses a stable per-conversation `prompt_cache_key` (via the existing session-anchor mechanism) instead of one model-wide key, so different conversations no longer share/poison each other's prompt cache. `opencodeSession` models keep their session id as before; `extra.prompt_cache_key` still overrides.

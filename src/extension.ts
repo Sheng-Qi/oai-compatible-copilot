@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { CustomOaiChatModelProvider } from "./provider";
 import type { HFModelItem } from "./types";
-import { initStatusBar } from "./statusBar";
+import { initServiceTierStatusBar, initStatusBar } from "./statusBar";
 import { ConfigViewPanel } from "./views/configView";
 import { logger } from "./logger";
 import { normalizeUserModels } from "./utils";
@@ -19,6 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
 	TokenizerManager.initialize(context.extensionPath);
 
 	const tokenCountStatusBarItem: vscode.StatusBarItem = initStatusBar(context);
+	initServiceTierStatusBar(context);
 	const provider = new CustomOaiChatModelProvider(context.secrets, tokenCountStatusBarItem);
 	context.subscriptions.push(provider);
 	// Register the custom provider under the vendor id used in package.json

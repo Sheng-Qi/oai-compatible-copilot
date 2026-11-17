@@ -25,7 +25,7 @@
 		"type": "git",
 		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 	},
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"engines": {
 		"vscode": "^1.120.0"
 	},

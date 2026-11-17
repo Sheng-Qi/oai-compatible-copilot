@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { LanguageModelChatInformation, LanguageModelChatRequestMessage, LanguageModelChatTool } from "vscode";
 import { countMessageTokens, countToolTokens } from "./provideToken";
+import { getGlobalServiceTier } from "./modelConfiguration";
 
 export function initStatusBar(context: vscode.ExtensionContext): vscode.StatusBarItem {
 	// Create status bar item for token count display
@@ -13,6 +14,40 @@ export function initStatusBar(context: vscode.ExtensionContext): vscode.StatusBa
 	// Show the status bar item initially
 	tokenCountStatusBarItem.show();
 	return tokenCountStatusBarItem;
+}
+
+/**
+ * Create a status bar item showing the global OpenAI service tier (GPT-6+).
+ * Standard is quiet; Fast gets a warning background so an expensive tier is
+ * visible at a glance. Clicking opens the tier switcher.
+ */
+export function initServiceTierStatusBar(context: vscode.ExtensionContext): vscode.StatusBarItem {
+	const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+	item.name = "Custom OAI Service Tier";
+	item.command = "custom-oaicopilot.switchServiceTier";
+	context.subscriptions.push(item);
+	updateServiceTierStatusBar(item);
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration("oaicopilot.serviceTier")) {
+				updateServiceTierStatusBar(item);
+			}
+		})
+	);
+	item.show();
+	return item;
+}
+
+/** Refresh the service tier indicator from the current global setting. */
+export function updateServiceTierStatusBar(item: vscode.StatusBarItem): void {
+	const tier = getGlobalServiceTier();
+	const isFast = tier === "fast";
+	item.text = isFast ? "$(zap) OAI: Fast" : "$(circle-outline) OAI: Std";
+	item.tooltip = isFast
+		? "Custom OAI service tier: Fast (higher cost, lower latency) for GPT-6+ models\nClick to switch tiers"
+		: "Custom OAI service tier: Standard for GPT-6+ models\nClick to switch tiers";
+	item.backgroundColor = isFast ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
+	item.show();
 }
 
 /**
