@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
-import { initSessionRouting, registerSessionId, resolveSessionId } from "../sessionRouting";
+import { getResponsesCacheScope, initSessionRouting, registerSessionId, resolveSessionId } from "../sessionRouting";
 
 function textMessage(role: number, text: string): vscode.LanguageModelChatRequestMessage {
 	return {
@@ -11,6 +11,37 @@ function textMessage(role: number, text: string): vscode.LanguageModelChatReques
 }
 
 suite("SessionRouting", () => {
+	test("shares Responses cache sessions only within a matching model and group", () => {
+		const storage = {
+			get: () => ({}),
+			update: async () => undefined,
+		} as unknown as vscode.Memento;
+		initSessionRouting(storage);
+		const modelA = getResponsesCacheScope("gpt-6.2-sol::qiuqiu_gpt", "gpt-6.2-sol", "shared");
+		const modelB = getResponsesCacheScope("gpt-6.2-sol::suixiang_gpt", "gpt-6.2-sol", " shared ");
+		assert.strictEqual(modelA, modelB);
+
+		const first = [textMessage(1, "hello")];
+		const fresh = resolveSessionId(modelA, first);
+		registerSessionId(modelA, first, "hi there", fresh.sessionId);
+		const nextTurn = [textMessage(1, "hello"), textMessage(2, "hi there"), textMessage(1, "again")];
+		const reused = resolveSessionId(modelB, nextTurn);
+		assert.strictEqual(reused.sessionId, fresh.sessionId);
+		assert.strictEqual(reused.registered, true);
+		for (const scope of [
+			getResponsesCacheScope("gpt-6.2-astra::suixiang_gpt", "gpt-6.2-astra", "shared"),
+			getResponsesCacheScope("gpt-6.2-sol::suixiang_gpt", "gpt-6.2-sol", "other"),
+			getResponsesCacheScope("gpt-6.2-sol::suixiang_gpt", "gpt-6.2-sol"),
+		]) {
+			assert.strictEqual(resolveSessionId(scope, nextTurn).registered, false);
+		}
+		assert.strictEqual(resolveSessionId(modelB, [textMessage(1, "another conversation")]).registered, false);
+		assert.strictEqual(
+			getResponsesCacheScope("gpt-6.2-sol::suixiang_gpt", "gpt-6.2-sol"),
+			"gpt-6.2-sol::suixiang_gpt"
+		);
+	});
+
 	test("keeps one session across turns of one conversation", () => {
 		const storage = {
 			get: () => ({}),

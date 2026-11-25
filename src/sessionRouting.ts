@@ -120,6 +120,12 @@ function store(anchor: string, sessionId: string): void {
 	persist();
 }
 
+export function getResponsesCacheScope(modelId: string, baseModelId: string, group?: string): string {
+	return typeof group === "string" && group.trim()
+		? `\u0000responses-cache:${JSON.stringify([baseModelId, group.trim()])}`
+		: modelId;
+}
+
 export function resolveSessionId(
 	modelId: string,
 	messages: readonly vscode.LanguageModelChatRequestMessage[]

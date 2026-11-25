@@ -399,6 +399,11 @@
 								"default": false,
 								"description": "Use the OpenCode session contract (responses Muse and completions glm): stable x-opencode-session, OpenCode UA, prompt-cache affinity, store=false for Responses, reasoning_content replay. Thinking follows upstream opt-in. Leave false for router models."
 							},
+									"responsesCacheGroup": {
+										"type": "string",
+										"default": "",
+										"description": "Optional Responses API cache group. Models with the same base model ID and group share per-conversation prompt_cache_key values."
+									},
 							"include_reasoning_in_request": {
 								"type": "boolean",
 								"default": false,

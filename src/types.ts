@@ -100,6 +100,7 @@ export interface HFModelItem {
 	 * Leave false for router/OpenAI-compatible models.
 	 */
 	opencodeSession?: boolean;
+	responsesCacheGroup?: string;
 
 	/**
 	 * Whether to include reasoning_content in assistant messages sent to the API.

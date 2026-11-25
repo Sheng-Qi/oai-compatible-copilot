@@ -389,6 +389,12 @@ VS Code Copilot 针对特定模型优化了系统提示词。[详细介绍](http
 
 </details>
 
+### 跨供应商共享 Responses 缓存键
+
+若要在同一对话中切换供应商时沿用自动生成的 `prompt_cache_key`，可在基础 `id` 相同的两条 `openai-responses` 模型配置中加入相同的 `"responsesCacheGroup": "my-sol-providers"`，并保留不同的 `configId`。不设置分组时，仍按模型配置隔离。
+
+此设置不覆盖显式配置的 `extra.prompt_cache_key`，也不适用于 `opencodeSession`。共享 key 不保证上游缓存命中，也不会让加密推理状态跨供应商通用。
+
 ## ✨ 自定义请求头
 
 你可以指定自定义 HTTP 请求头，这些请求头会在每次请求特定模型的供应商时发送。适用于：

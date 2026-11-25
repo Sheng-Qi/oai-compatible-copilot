@@ -35,7 +35,13 @@ import {
 	resolveProxyForModel,
 	selectProxyEntry,
 } from "./proxyConfig";
-import { isUpstreamProviderFailureError, registerSessionId, resolveSessionId, rotateSessionId } from "./sessionRouting";
+import {
+	getResponsesCacheScope,
+	isUpstreamProviderFailureError,
+	registerSessionId,
+	resolveSessionId,
+	rotateSessionId,
+} from "./sessionRouting";
 
 /** Label used in logs when no proxy is applied. */
 const DIRECT_PROXY_LABEL = "direct";
@@ -239,12 +245,15 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 			const retryConfig = createRetryConfig();
 			const opencodeSessionEnabled = um?.opencodeSession === true;
 			const session = opencodeSessionEnabled ? resolveSessionId(model.id, messages) : undefined;
+			const responsesCacheScope = getResponsesCacheScope(model.id, parsedModelId.baseId, um?.responsesCacheGroup);
 			// The Responses API needs a stable per-conversation `prompt_cache_key`
 			// even without the opencode session contract (a model-wide key lets
 			// different conversations share/poison each other's cache). Resolve one
 			// through the same anchor mechanism, but never send it as a header.
 			const responsesCacheSession =
-				!opencodeSessionEnabled && apiMode === "openai-responses" ? resolveSessionId(model.id, messages) : undefined;
+				!opencodeSessionEnabled && apiMode === "openai-responses"
+					? resolveSessionId(responsesCacheScope, messages)
+					: undefined;
 			const opencodeExtraHeaders: Record<string, string> | undefined = opencodeSessionEnabled
 				? {
 						"x-opencode-request": `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -362,7 +371,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 					registerSessionId(model.id, messages, collectedOutputText.join(""), requestHeaders["x-opencode-session"]);
 				}
 				if (!opencodeSessionEnabled && responsesCacheSession && !responsesCacheSession.registered) {
-					registerSessionId(model.id, messages, collectedOutputText.join(""), responsesCacheSession.sessionId);
+					registerSessionId(responsesCacheScope, messages, collectedOutputText.join(""), responsesCacheSession.sessionId);
 				}
 			};
 

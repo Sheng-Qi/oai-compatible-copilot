@@ -389,6 +389,12 @@ In this example, you'll have three different configurations of the glm-4.6 model
 
 </details>
 
+### Shared Responses prompt-cache keys
+
+To reuse the generated `prompt_cache_key` when switching providers in the same conversation, set the same `"responsesCacheGroup": "my-sol-providers"` on both `openai-responses` model entries with the same base `id`. Keep their `configId` values distinct. Leave the group unset for the default per-configuration isolation.
+
+This does not override an explicit `extra.prompt_cache_key` or apply to `opencodeSession`. It does not guarantee upstream cache hits or make encrypted reasoning portable across providers.
+
 ## ✨ Custom Headers
 
 You can specify custom HTTP headers that will be sent with every request to a specific model's provider. This is useful for:
