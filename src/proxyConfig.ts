@@ -152,10 +152,13 @@ export function proxyEntryIdentity(entry: ParsedProxyEntry): string {
 
 function buildEntryFromUrl(label: string, url: string, warnings: string[]): ParsedProxyEntry | undefined {
 	const raw = (url ?? "").trim();
+	if (/^(direct|none)$/i.test(raw)) {
+		return { kind: "direct", label };
+	}
 	try {
-		const proxy = parseModelProxy(raw || undefined);
+		const proxy = parseModelProxy(raw);
 		if (!proxy) {
-			return { kind: "direct", label };
+			throw new Error("An empty proxy URL is invalid; specify direct explicitly");
 		}
 		return { kind: "proxy", label, raw, proxy };
 	} catch (err) {
@@ -202,15 +205,13 @@ export function resolveProxyEntries(
 				continue;
 			}
 			const entry = buildEntryFromUrl(profile.name, profile.url, warnings);
-			if (entry) {
+				if (!entry) { throw new Error(warnings.at(-1)); }
 				entries.push(entry);
-			}
 			continue;
 		}
-		const entry = buildEntryFromUrl(token, token, warnings);
-		if (entry) {
-			entries.push(entry);
-		}
+		const entry = buildEntryFromUrl("inline proxy", token, warnings);
+		if (!entry) { throw new Error(warnings.at(-1)); }
+		entries.push(entry);
 	}
 
 	return { entries, warnings };
@@ -231,6 +232,7 @@ export function resolveAutoProxyEntries(profiles: ProxyProfile[], remoteName: st
 		if (entry) {
 			return { entries: [entry], warnings };
 		}
+		throw new Error(warnings.at(-1));
 	}
 	return { entries: [], warnings };
 }
@@ -256,19 +258,27 @@ export function resolveProxyForModel(
 	remoteName: string | undefined
 ): ProxyResolution {
 	const modelSpecStr = typeof modelSpec === "string" ? modelSpec.trim() : "";
+	if (modelSpec !== undefined && typeof modelSpec !== "string") {
+		throw new Error("Model proxy must be a string");
+	}
 	if (modelSpecStr) {
 		const resolved = resolveProxyEntries(modelSpecStr, profiles, remoteName);
 		if (resolved.entries.length > 0) {
 			return resolved;
 		}
+		throw new Error("No model proxy candidate applies in this environment; add an explicit fallback");
 	}
 
 	const globalSpecStr = typeof globalSpec === "string" ? globalSpec.trim() : "";
+	if (globalSpec !== undefined && typeof globalSpec !== "string") {
+		throw new Error("Global proxy must be a string");
+	}
 	if (globalSpecStr) {
 		const resolved = resolveProxyEntries(globalSpecStr, profiles, remoteName);
 		if (resolved.entries.length > 0) {
 			return resolved;
 		}
+		throw new Error("No global proxy candidate applies in this environment; add an explicit fallback");
 	}
 
 	return resolveAutoProxyEntries(profiles, remoteName);
@@ -288,10 +298,22 @@ export function parseProxyProfilesJson(
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
-	} catch (err) {
-		return { ok: false, error: `Invalid proxy profiles JSON: ${err instanceof Error ? err.message : String(err)}` };
+	} catch {
+		return { ok: false, error: "Invalid proxy profiles JSON" };
 	}
+	if (!Array.isArray(parsed)) { return { ok: false, error: "Proxy profiles must be an array" }; }
 	const result = normalizeProxyProfiles(parsed);
+	if (result.warnings.length) { return { ok: false, error: "Invalid or duplicate proxy profile" }; }
+	try {
+		for (const profile of result.profiles) {
+			if (!profile.url) {
+				throw new Error("An empty proxy URL is invalid; specify direct explicitly");
+			}
+			if (!/^(direct|none)$/i.test(profile.url)) { parseModelProxy(profile.url); }
+		}
+	} catch (err) {
+		return { ok: false, error: (err as Error).message };
+	}
 	return { ok: true, value: result.profiles };
 }
 
@@ -333,8 +355,7 @@ export async function selectProxyEntry(
 		return { entry: entries[0], probeFailures: [] };
 	}
 	if (!probeTimeoutMs || probeTimeoutMs <= 0) {
-		const direct = entries.find((e) => e.kind === "direct");
-		return { entry: direct ?? entries[0], probeFailures: [] };
+		return { entry: entries[0], probeFailures: [] };
 	}
 
 	const cacheKey = entries.map(proxyEntryIdentity).join(" -> ");
@@ -362,7 +383,7 @@ export async function selectProxyEntry(
 		}
 	}
 
-	return { entry: entries[0], probeFailures };
+	throw new Error(`No configured proxy is TCP-reachable: ${probeFailures.join("; ")}`);
 }
 
 /**

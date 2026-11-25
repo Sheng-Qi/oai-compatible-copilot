@@ -142,7 +142,7 @@ suite("ResponsesState", () => {
 		assert.strictEqual(JSON.stringify(second), JSON.stringify(first));
 	});
 
-	test("adds encrypted include for every Responses model", () => {
+	test("only requests encrypted reasoning via OpenCode or explicit extra", () => {
 		const opencode = new OpenaiResponsesApi("muse-spark-1.3-opencode").prepareRequestBody(
 			{ model: "muse-spark-1.3-opencode", input: [], stream: true, reasoning: { effort: "xhigh" } },
 			{
@@ -157,7 +157,12 @@ suite("ResponsesState", () => {
 			{ model: "glm-5.3-flash", input: [], stream: true, reasoning: { effort: "max" } },
 			{ id: "glm-5.3-flash", owned_by: "router" }
 		);
-		assert.deepStrictEqual(glm.include, ["reasoning.encrypted_content"]);
+		assert.strictEqual(glm.include, undefined);
+		const explicit = new OpenaiResponsesApi("custom").prepareRequestBody(
+			{ model: "custom", input: [], stream: true },
+			{ id: "custom", owned_by: "router", extra: { include: ["reasoning.encrypted_content"] } }
+		);
+		assert.deepStrictEqual(explicit.include, ["reasoning.encrypted_content"]);
 	});
 
 	test("rewrites extra.model and leaves router headers without OpenCode session", () => {

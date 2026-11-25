@@ -25,7 +25,7 @@
 		"type": "git",
 		"url": "https://github.com/Sheng-Qi/oai-compatible-copilot"
 	},
-	"version": "0.5.3",
+	"version": "0.6.0",
 	"engines": {
 		"vscode": "^1.120.0"
 	},
@@ -140,7 +140,7 @@
 						"default",
 						"fast"
 					],
-					"description": "Global service tier for GPT-6+ models on OpenAI Chat Completions / Responses. 'fast' trades higher cost for lower latency. Switch quickly via the 'CustomOAICopilot: Switch Service Tier' command. Can be overridden per machine/remote. A single model can still be pinned via its extra: { \"service_tier\": \"fast\" }."
+					"description": "Global tier preference for opted-in GPT-6+ models. Fast requires useGlobalServiceTier; Standard omits the wire field. An explicit extra.service_tier overrides this preference."
 				},
 				"oaicopilot.proxies": {
 					"type": "array",
@@ -393,6 +393,11 @@
 								"default": 0,
 								"minimum": 0,
 								"description": "Optional per-model timeout in milliseconds covering the whole streaming body. 0 keeps the default VS Code fetch. Works for any model (opencode or router)."
+							},
+							"useGlobalServiceTier": {
+								"type": "boolean",
+								"default": false,
+								"description": "Allow the global Fast tier for this GPT-6+ model. Only enable for endpoints that accept service_tier. Standard omits the field."
 							},
 							"opencodeSession": {
 								"type": "boolean",

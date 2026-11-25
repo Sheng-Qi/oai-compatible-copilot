@@ -33,6 +33,11 @@ export function activate(context: vscode.ExtensionContext) {
 			if (e.affectsConfiguration("oaicopilot.models") || e.affectsConfiguration("oaicopilot.baseUrl")) {
 				provider.notifyModelsChanged();
 			}
+		}),
+		context.secrets.onDidChange(({ key }) => {
+			if (key === "oaicopilot.apiKey" || key.startsWith("oaicopilot.apiKey.")) {
+				provider.notifyModelsChanged();
+			}
 		})
 	);
 
@@ -154,7 +159,8 @@ export function activate(context: vscode.ExtensionContext) {
 			await vscode.workspace
 				.getConfiguration()
 				.update("oaicopilot.serviceTier", picked.value, vscode.ConfigurationTarget.Global);
-			vscode.window.showInformationMessage(`Custom OAI service tier: ${picked.label}.`);
+			const effective = getGlobalServiceTier();
+			vscode.window.showInformationMessage(`Custom OAI effective service tier: ${effective === "fast" ? "Fast" : "Standard"} (opted-in models only).`);
 		})
 	);
 

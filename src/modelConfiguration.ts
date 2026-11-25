@@ -135,5 +135,5 @@ function isGpt6OrNewer(model: HFModelItem | undefined): boolean {
  * else is untouched so non-supporting models never see the parameter.
  */
 export function resolveServiceTier(model: HFModelItem | undefined): ServiceTierValue | undefined {
-	return isGpt6OrNewer(model) ? getGlobalServiceTier() : undefined;
+	return model?.useGlobalServiceTier === true && isGpt6OrNewer(model) && getGlobalServiceTier() === "fast" ? "fast" : undefined;
 }

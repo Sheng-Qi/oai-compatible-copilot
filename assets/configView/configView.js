@@ -81,6 +81,15 @@ const dropdownHeader = modelIdDropdown.querySelector(".dropdown-header");
 
 // Global Configuration save button event listener
 document.getElementById("saveBase").addEventListener("click", () => {
+	const changes = readGlobalForm();
+	const dirty = Object.keys(changes).filter((key) => JSON.stringify(changes[key]) !== JSON.stringify(globalFormBaseline?.[key]));
+	if (globalFormBaseline && dirty.length) {
+		vscode.postMessage({ type: "saveGlobalConfig", ...changes, dirty });
+	}
+});
+
+let globalFormBaseline;
+function readGlobalForm() {
 	const retry = {
 		enabled: retryEnabledInput.checked,
 		max_attempts: parseInt(maxAttemptsInput.value) || 3,
@@ -93,8 +102,7 @@ document.getElementById("saveBase").addEventListener("click", () => {
 			: [],
 	};
 
-	vscode.postMessage({
-		type: "saveGlobalConfig",
+	return {
 		baseUrl: baseUrlInput.value,
 		apiKey: apiKeyInput.value,
 		delay: parseInt(delayInput.value) || 0,
@@ -105,8 +113,8 @@ document.getElementById("saveBase").addEventListener("click", () => {
 		retry: retry,
 		commitModel: commitModelInput.value,
 		commitLanguage: commitLanguageInput.value,
-	});
-});
+	};
+}
 
 const handleRefresh = () => {
 	// Hide the model form if it's visible
@@ -324,6 +332,7 @@ window.addEventListener("message", (event) => {
 			populateCommitModelDropdown();
 			commitModelInput.value = state.commitModel || "";
 			commitLanguageInput.value = commitLanguage;
+			globalFormBaseline = readGlobalForm();
 
 			// Render provider and model management
 			renderProviders();

@@ -17,3 +17,5 @@ AGENTS.md
 CLAUDE.md
 .doc/**
 out/test/**
+*.vsix
+*.vsix.sha256

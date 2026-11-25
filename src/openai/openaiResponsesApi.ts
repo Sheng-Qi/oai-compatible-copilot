@@ -284,9 +284,7 @@ export class OpenaiResponsesApi extends CommonApi<ResponsesInputItem, Record<str
 			rb.service_tier = serviceTier;
 		}
 
-		// Always ask for encrypted reasoning so follow-up turns can replay it
-		// for continuity (relays that don't support `include` ignore it).
-		if (rb.include === undefined) {
+		if (rb.include === undefined && um?.opencodeSession === true) {
 			rb.include = ["reasoning.encrypted_content"];
 		}
 

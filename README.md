@@ -14,14 +14,14 @@ English | [简体中文](README.zh-CN.md)
 [![License](https://img.shields.io/github/license/JohnnyZ93/oai-compatible-copilot?color=orange&label=License)](https://github.com/JohnnyZ93/oai-compatible-copilot/blob/main/LICENSE)
 
 > [!IMPORTANT]
-> This is a maintained fork of [JohnnyZ93/oai-compatible-copilot](https://github.com/JohnnyZ93/oai-compatible-copilot). It keeps the upstream extension identity and currently adds one focused compatibility fix: OpenAI Responses gateways that replay an entire sequence of `response.output_text.delta` events no longer produce duplicated replies in Copilot Agent mode. Ask mode and providers that already emit standard streams are preserved.
+> This fork uses extension ID `custom.custom-oai-copilot` and model vendor `custom-oaicopilot`. It retains the `oaicopilot.*` settings namespace, but migrating from upstream may require re-entering API keys and reselecting models. Disable the upstream extension if both are installed to avoid conflicting settings.
 
 ## Fork Releases
 
 Download the latest VSIX from [this fork's Releases page](https://github.com/Sheng-Qi/oai-compatible-copilot/releases), then install it with:
 
 ```bash
-code --install-extension ./oai-compatible-copilot-*.vsix --force
+code --install-extension ./custom-oai-copilot-v0.6.0.vsix --force
 ```
 
 For Remote SSH, install the VSIX in the remote window as well, or use **Extensions: Install from VSIX...** and select the remote target. Reload VS Code after installation.
@@ -30,7 +30,7 @@ For Remote SSH, install the VSIX in the remote window as well, or use **Extensio
 
 - Suppresses full replay of already emitted OpenAI Responses delta sequences in Agent mode.
 - Buffers only a possible replay prefix; if the sequence diverges or ends early, the buffered text is emitted unchanged.
-- Does not change Chat Completions, Anthropic, Gemini, or Ollama request/response handling.
+- Adds model proxy/timeout settings, optional OpenCode compatibility and Fast-tier routing, and model-list refresh for VS Code's native local BYOK bridge.
 - Does not include the earlier experimental cumulative-snapshot handling.
 
 ### Creating a GitHub Release
@@ -40,15 +40,15 @@ The `github-release.yml` workflow builds the VSIX, generates a SHA-256 checksum,
 ```bash
 git switch main
 git pull --ff-only
-git tag -a v0.4.2-replay.1 -m "OpenAI Responses Agent replay fix"
-git push origin v0.4.2-replay.1
+git tag -a v0.6.0 -m "Release 0.6.0"
+git push origin v0.6.0
 ```
 
 Monitor the workflow at <https://github.com/Sheng-Qi/oai-compatible-copilot/actions>. To remove and recreate a mistaken tag before a release is published:
 
 ```bash
-git tag -d v0.4.2-replay.1
-git push origin :refs/tags/v0.4.2-replay.1
+git tag -d v0.6.0
+git push origin :refs/tags/v0.6.0
 ```
 
 ## ✨ Features
@@ -143,10 +143,12 @@ A proxy value accepts:
 
 Resolution order:
 
-1. `models[].proxy` (when it resolves to at least one candidate)
+1. `models[].proxy` (when set)
 2. `oaicopilot.proxy`
 3. auto: the first profile whose `useIn` matches the current environment
 4. direct connection
+
+An explicit invalid proxy spec, or one with no eligible candidates, fails rather than falling through. TCP probes select candidates before the request; they do not verify the proxy handshake or replay a failed inference request. With probing disabled, the first eligible candidate wins. HTTPS proxy servers and proxy URL credentials are not supported. Model discovery uses the default VS Code fetch path, not the model's proxy/timeout.
 
 `useIn` filters by `vscode.env.remoteName`: `"local"` matches non-remote windows, `"remote"` matches any remote window, and other values prefix-match the remoteName (e.g. `"ssh"`, `"wsl"`). Omit it to allow the profile everywhere.
 
@@ -580,7 +582,8 @@ All parameters support individual configuration for different models, providing 
 
 ## Global Settings
 
-- `oaicopilot.serviceTier`: Global service tier (`default` / `fast`) for GPT-6+ models on OpenAI Chat Completions / Responses. `fast` trades higher cost for lower latency. Switch quickly via the Command Palette (`CustomOAICopilot: Switch Service Tier`); takes effect on the next request. Non-GPT-6 models never receive the parameter. Per-machine/per-remote overrides via settings scopes are honored. To pin a single model, use its `extra: { "service_tier": "fast" }`.
+- `oaicopilot.serviceTier`: Global preference (`default` / `fast`). Add `"useGlobalServiceTier": true` to each GPT-6+ model whose endpoint supports `service_tier`. Standard omits the field; `extra.service_tier` remains an explicit override.
+- Responses does not request encrypted reasoning by default outside `opencodeSession`. Add `"extra": { "include": ["reasoning.encrypted_content"] }` if your endpoint supports it and you need it. Stream failures are reported without a compatibility resend. Text-derived cache affinity is best effort, not a unique conversation ID.
 
 ## Thanks to
 

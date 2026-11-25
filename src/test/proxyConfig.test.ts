@@ -117,10 +117,9 @@ suite("proxyConfig", () => {
 			assert.strictEqual(res.entries[0].kind, "proxy");
 		});
 
-		test("unknown names fall back to URL parsing and produce warnings", () => {
-			const res = resolveProxyEntries("not_a_url_or_profile", profiles, undefined);
-			assert.strictEqual(res.entries.length, 0);
-			assert.ok(res.warnings.length === 1);
+		test("rejects an unknown profile even with a direct fallback", () => {
+			assert.throws(() => resolveProxyForModel("not_a_url_or_profile, direct", "", profiles, undefined), /unknown proxy profile/);
+			assert.throws(() => resolveProxyForModel("", "not_a_url_or_profile", profiles, undefined), /unknown proxy profile/);
 		});
 
 		test("list keeps order and mixes kinds", () => {
@@ -160,7 +159,8 @@ suite("proxyConfig", () => {
 		});
 
 		test("profiles resolving to direct counts as a hit", () => {
-			const res = resolveAutoProxyEntries([{ name: "d", url: "" }], "ssh-remote");
+			assert.throws(() => resolveAutoProxyEntries([{ name: "d", url: "" }], "ssh-remote"), /empty proxy URL/);
+			const res = resolveAutoProxyEntries([{ name: "d", url: "direct" }], "ssh-remote");
 			assert.strictEqual(res.entries[0].kind, "direct");
 		});
 	});
@@ -178,8 +178,8 @@ suite("proxyConfig", () => {
 			assert.strictEqual(res.entries[0].kind === "proxy" ? res.entries[0].raw : "", "http://global:2");
 		});
 
-		test("global spec filtered to nothing falls back to auto", () => {
-			const res = resolveProxyForModel(
+		test("an explicit spec filtered to nothing requires an explicit fallback", () => {
+			assert.throws(() => resolveProxyForModel(
 				"l",
 				"l",
 				[
@@ -187,8 +187,7 @@ suite("proxyConfig", () => {
 					{ name: "r", url: "socks5://127.0.0.1:1082", useIn: ["remote"] },
 				],
 				"ssh-remote"
-			);
-			assert.strictEqual(res.entries[0].label, "r");
+			), /No model proxy candidate applies/);
 		});
 
 		test("nothing configured means direct (empty entries)", () => {
@@ -239,11 +238,11 @@ suite("proxyConfig", () => {
 			assert.strictEqual(res.entry, undefined);
 		});
 
-		test("probing disabled keeps order but direct beats proxies", async () => {
+		test("probing disabled honors the first candidate", async () => {
 			const a = mkProxy("http://127.0.0.1:1");
 			const d = mkProxy("direct");
 			const res = await selectProxyEntry([a, d], 0);
-			assert.strictEqual(res.entry, d);
+			assert.strictEqual(res.entry, a);
 		});
 
 		test("probes in order and selects the first reachable candidate", async () => {
@@ -278,7 +277,7 @@ suite("proxyConfig", () => {
 			alive.close();
 		});
 
-		test("all candidates unreachable falls back to the first", async () => {
+		test("all candidates unreachable fails without an explicit direct fallback", async () => {
 			const dead = net.createServer(() => {
 				/* not listening */
 			});
@@ -286,12 +285,9 @@ suite("proxyConfig", () => {
 			const deadPort = (dead.address() as net.AddressInfo).port;
 			await new Promise<void>((resolve) => dead.close(() => resolve()));
 
-			const res = await selectProxyEntry(
-				[mkProxy(`socks5://127.0.0.1:${deadPort}`), mkProxy(`http://127.0.0.1:${deadPort}`)],
-				300
-			);
-			assert.ok(res.entry);
-			assert.strictEqual(res.probeFailures.length, 2);
+			const entries = [mkProxy(`socks5://127.0.0.1:${deadPort}`), mkProxy(`http://127.0.0.1:${deadPort}`)];
+			await assert.rejects(selectProxyEntry(entries, 300), /No configured proxy is TCP-reachable/);
+			assert.strictEqual((await selectProxyEntry([...entries, mkProxy("direct")], 300)).entry?.kind, "direct");
 		});
 	});
 });

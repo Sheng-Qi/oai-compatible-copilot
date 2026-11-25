@@ -1,5 +1,12 @@
 # Change Log
 
+## 0.6.0
+
+- Responses reports stream errors without resending a modified request. Encrypted reasoning is requested only in OpenCode mode or through explicit `extra.include`. Responses cache grouping is retained; the text-derived affinity key is best effort, not session isolation.
+- Explicit proxy mistakes fail rather than silently connecting directly. Ordered proxy candidates use TCP preselection, not request failover. HTTPS proxies and proxy URL authentication are rejected instead of being accepted without support.
+- Configuration saves only changed fields to User settings; older imports do not clear absent settings. Chat and Git commit generation honor cancellation and model transport settings; model discovery uses the VS Code fetch path independently of model-level transport.
+- Fast requires `useGlobalServiceTier: true` on each supporting GPT-6+ model; Standard omits the tier, and explicit `extra.service_tier` continues to win.
+
 ## 0.5.3 (2026-11-17)
 
 - Fix(stall): remove automatic `previous_response_id` chaining — relays in the wild (verified: suixiang answers HTTP 200 with `previous_response_id requires an OpenAI API-key account` instead of supporting server-side chaining), which caused 60–90s empty turns on every chained request. Responses is now stateless full-history like Codex; the byte-stable input from 0.5.2 is kept, so prefix caching still applies. A manual escape hatch stays via `extra: { previous_response_id }`.

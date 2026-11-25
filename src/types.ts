@@ -100,6 +100,7 @@ export interface HFModelItem {
 	 * Leave false for router/OpenAI-compatible models.
 	 */
 	opencodeSession?: boolean;
+	useGlobalServiceTier?: boolean;
 	responsesCacheGroup?: string;
 
 	/**

@@ -44,8 +44,8 @@ export function updateServiceTierStatusBar(item: vscode.StatusBarItem): void {
 	const isFast = tier === "fast";
 	item.text = isFast ? "$(zap) OAI: Fast" : "$(circle-outline) OAI: Std";
 	item.tooltip = isFast
-		? "Custom OAI service tier: Fast (higher cost, lower latency) for GPT-6+ models\nClick to switch tiers"
-		: "Custom OAI service tier: Standard for GPT-6+ models\nClick to switch tiers";
+		? "Custom OAI global preference: Fast (higher cost, lower latency) for opted-in GPT-6+ models\nClick to switch tiers"
+		: "Custom OAI global preference: Standard (omits the tier; explicit model overrides still apply)\nClick to switch tiers";
 	item.backgroundColor = isFast ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
 	item.show();
 }

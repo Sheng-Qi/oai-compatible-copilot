@@ -287,13 +287,16 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 			// Resolve the effective proxy for this request (per-model spec wins over the
 			// global spec; both support URLs, profile names and failover lists).
 			const proxyProfiles = normalizeProxyProfiles(config.get<unknown>("oaicopilot.proxies", []));
+				if (proxyProfiles.warnings.length) {
+					throw new Error("Invalid oaicopilot.proxies configuration; check profile names, URLs and useIn filters");
+				}
 			const proxyResolution = resolveProxyForModel(
 				um?.proxy,
 				config.get<string>("oaicopilot.proxy", ""),
 				proxyProfiles.profiles,
 				vscode.env.remoteName
 			);
-			for (const warning of [...proxyProfiles.warnings, ...proxyResolution.warnings]) {
+				for (const warning of proxyResolution.warnings) {
 				logger.warn("proxy.warning", { modelId: model.id, warning });
 			}
 			const proxyProbeTimeoutMs = config.get<number>("oaicopilot.proxyProbeTimeoutMs", PROXY_PROBE_DEFAULT_TIMEOUT_MS);
@@ -311,8 +314,11 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 				});
 			}
 
-			const useLongLivedFetch = Boolean(activeProxyRaw) || requestTimeoutMs > 0;
+				const direct = chosenProxy.entry?.kind === "direct";
 			const controller = new AbortController();
+				if (token.isCancellationRequested) {
+					controller.abort();
+				}
 			const timeoutId =
 				requestTimeoutMs > 0
 					? setTimeout(() => {
@@ -326,14 +332,12 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 					controller.abort();
 				}
 			});
-			const dispatchFetch = useLongLivedFetch
-				? createModelFetch({ proxy: activeProxyRaw || undefined, timeoutMs: requestTimeoutMs || undefined })
-				: fetch;
+				const dispatchFetch = createModelFetch({ proxy: activeProxyRaw || undefined, timeoutMs: requestTimeoutMs, direct });
 			const fetchInit = (headers: Record<string, string>, body: unknown): RequestInit => ({
 				method: "POST",
 				headers,
 				body: JSON.stringify(body),
-				...(useLongLivedFetch ? { signal: controller.signal } : {}),
+					signal: controller.signal,
 			});
 			const rotateSession = (): void => {
 				if (!opencodeSessionEnabled) {
@@ -351,6 +355,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 				try {
 					return await send();
 				} catch (err) {
+						controller.signal.throwIfAborted();
 					if (!opencodeSessionEnabled || !isUpstreamProviderFailureError(err)) {
 						throw err;
 					}
@@ -405,7 +410,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 							}
 
 							return res;
-						}, retryConfig)
+							}, retryConfig, controller.signal)
 					);
 
 					if (!response.body) {
@@ -445,7 +450,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 							}
 
 							return res;
-						}, retryConfig)
+							}, retryConfig, controller.signal)
 					);
 
 					if (!response.body) {
@@ -511,80 +516,15 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 							}
 
 							return res;
-						}, retryConfig);
+						}, retryConfig, controller.signal);
 
-					// Strict relays may reject the `include: ["reasoning.encrypted_content"]`
-					// parameter. On a client error, retry once without it — the fallback
-					// wire shape is then plain Codex-style input.
-					const buildFallbackBody = (): Record<string, unknown> => {
-						let fallbackBody: Record<string, unknown> = {
-							model: parsedModelId.baseId,
-							input: fullInput,
-							stream: true,
-						};
-						fallbackBody = openaiResponsesApi.prepareRequestBody(fallbackBody, um, options);
-						if (!fallbackBody.prompt_cache_key) {
-							fallbackBody.prompt_cache_key = opencodeSessionEnabled
-								? session!.sessionId
-								: `oaicopilot-${parsedModelId.baseId}-${responsesCacheSession!.sessionId}`;
-						}
-						delete fallbackBody.include;
-						return fallbackBody;
-					};
-					const isClientErrorStatus = (status: unknown): boolean =>
-						typeof status === "number" && status >= 400 && status < 500 && status !== 429;
-
-					let response: Response;
-					try {
-						response = await sendWithSessionFallback(() => sendRequest(requestBody));
-					} catch (err) {
-						const status = (err as { status?: unknown })?.status;
-						if (!isClientErrorStatus(status) || requestBody.include === undefined) {
-							throw err;
-						}
-						const fallbackBody = buildFallbackBody();
-						logger.warn("request.responsesFallback", {
-							modelId: model.id,
-							status,
-							dropped: ["include"],
-						});
-						response = await sendRequest(fallbackBody);
-					}
+					const response = await sendWithSessionFallback(() => sendRequest(requestBody));
 
 					if (!response.body) {
 						throw new Error("No response body from Responses API");
 					}
 					openaiResponsesApi.lastStreamUrl = url;
-					try {
-						await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
-					} catch (streamErr) {
-						// Relays that reject `include` answer HTTP 200 with an in-stream
-						// error payload. Retry once against a fresh stream without it.
-						const status = (streamErr as { status?: unknown })?.status;
-						if (
-							streamErr instanceof Error &&
-							/Responses API error:/.test(streamErr.message) &&
-							status === 502 &&
-							requestBody.include !== undefined &&
-							!token.isCancellationRequested
-						) {
-							const fallbackBody = buildFallbackBody();
-							logger.warn("request.responsesFallback", {
-								modelId: model.id,
-								status,
-								dropped: ["include"],
-								afterStreamError: true,
-							});
-							response = await sendRequest(fallbackBody);
-							if (!response.body) {
-								throw new Error("No response body from Responses API");
-							}
-							openaiResponsesApi.lastStreamUrl = url;
-							await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
-						} else {
-							throw streamErr;
-						}
-					}
+					await openaiResponsesApi.processStreamingResponse(response.body, trackingProgress, token);
 
 					for (const item of openaiResponsesApi.takeCapturedReasoningItems()) {
 						trackingProgress.report(createResponsesReasoningPart(item));
@@ -640,7 +580,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 							}
 
 							return res;
-						}, retryConfig)
+							}, retryConfig, controller.signal)
 					);
 
 					if (!response.body) {
@@ -676,7 +616,7 @@ export class CustomOaiChatModelProvider implements LanguageModelChatProvider {
 							}
 
 							return res;
-						}, retryConfig)
+							}, retryConfig, controller.signal)
 					);
 
 					if (!response.body) {

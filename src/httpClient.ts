@@ -5,6 +5,7 @@ import { logger } from "./logger";
 export interface ModelFetchOptions {
 	proxy?: string;
 	timeoutMs?: number;
+	direct?: boolean;
 }
 
 export type ParsedProxy = { kind: "http"; uri: string } | { kind: "socks5"; host: string; port: number };
@@ -25,32 +26,32 @@ export function parseModelProxy(proxy: string | undefined): ParsedProxy | undefi
 	try {
 		url = new URL(raw);
 	} catch {
-		throw new Error(`Invalid model proxy URL: ${raw}`);
+		throw new Error("Invalid model proxy URL or unknown proxy profile");
 	}
 
 	const protocol = url.protocol.toLowerCase();
-	if (protocol === "http:" || protocol === "https:") {
+	if (url.username || url.password) {
+		throw new Error("Proxy URL authentication is not supported");
+	}
+	if (protocol === "http:") {
 		return { kind: "http", uri: url.toString() };
 	}
 	if (protocol === "socks5:" || protocol === "socks5h:" || protocol === "socks:") {
 		const host = url.hostname;
 		const port = url.port ? Number(url.port) : 1080;
 		if (!host || !Number.isFinite(port) || port <= 0) {
-			throw new Error(`Invalid SOCKS proxy URL: ${raw}`);
-		}
-		if (url.username || url.password) {
-			throw new Error(`SOCKS proxy auth is not supported: ${raw}`);
+			throw new Error("Invalid SOCKS proxy URL");
 		}
 		return { kind: "socks5", host, port };
 	}
 
-	throw new Error(`Unsupported model proxy scheme '${protocol}' in ${raw}; use http:// or socks5://`);
+	throw new Error("Unsupported model proxy scheme; use http:// or socks5://");
 }
 
 export function createModelFetch(options: ModelFetchOptions = {}): typeof fetch {
 	const parsedProxy = parseModelProxy(options.proxy);
 	const timeoutMs = options.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : 0;
-	if (!parsedProxy && timeoutMs <= 0) {
+	if (!parsedProxy && timeoutMs <= 0 && !options.direct) {
 		return fetch;
 	}
 

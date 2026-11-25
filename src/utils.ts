@@ -281,7 +281,8 @@ export function createRetryConfig(): RetryConfig {
  * @param token Cancellation token
  * @returns Result of the function execution
  */
-export async function executeWithRetry<T>(fn: () => Promise<T>, retryConfig: RetryConfig): Promise<T> {
+export async function executeWithRetry<T>(fn: () => Promise<T>, retryConfig: RetryConfig, signal?: AbortSignal): Promise<T> {
+	signal?.throwIfAborted();
 	if (!retryConfig.enabled) {
 		return await fn();
 	}
@@ -295,9 +296,11 @@ export async function executeWithRetry<T>(fn: () => Promise<T>, retryConfig: Ret
 	let lastError: Error | undefined;
 
 	for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+		signal?.throwIfAborted();
 		try {
 			return await fn();
 		} catch (error) {
+			signal?.throwIfAborted();
 			lastError = error instanceof Error ? error : new Error(String(error));
 
 			// Check if error is retryable based on status codes
@@ -327,7 +330,7 @@ export async function executeWithRetry<T>(fn: () => Promise<T>, retryConfig: Ret
 			);
 
 			// Wait for the calculated interval before retrying
-			await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+			await abortableDelay(delayMs, signal);
 		}
 	}
 
@@ -337,4 +340,19 @@ export async function executeWithRetry<T>(fn: () => Promise<T>, retryConfig: Ret
 		lastError: lastError ? { name: lastError.name, message: lastError.message } : String(lastError),
 	});
 	throw lastError || new Error("Retry failed");
+}
+
+function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		signal?.throwIfAborted();
+		const onAbort = () => {
+			clearTimeout(timer);
+			reject(signal?.reason);
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, delayMs);
+		signal?.addEventListener("abort", onAbort, { once: true });
+	});
 }

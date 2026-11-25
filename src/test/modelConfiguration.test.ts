@@ -152,8 +152,8 @@ suite("modelConfiguration", () => {
 		try {
 			await config.update("oaicopilot.serviceTier", "fast", vscode.ConfigurationTarget.Global);
 			assert.strictEqual(getGlobalServiceTier(), "fast");
-			assert.strictEqual(resolveServiceTier({ id: "gpt-6", owned_by: "openai" }), "fast");
-			assert.strictEqual(resolveServiceTier({ id: "gpt-6.1-sol", owned_by: "openai" }), "fast");
+			assert.strictEqual(resolveServiceTier({ id: "gpt-6", owned_by: "openai" }), undefined);
+			assert.strictEqual(resolveServiceTier({ id: "gpt-6.1-sol", owned_by: "openai", useGlobalServiceTier: true }), "fast");
 			assert.strictEqual(resolveServiceTier({ id: "gpt-5.2", owned_by: "openai" }), undefined);
 			assert.strictEqual(resolveServiceTier({ id: "deepseek-v4", owned_by: "deepseek" }), undefined);
 			assert.strictEqual(resolveServiceTier(undefined), undefined);
@@ -180,7 +180,7 @@ suite("modelConfiguration", () => {
 			await config.update("oaicopilot.serviceTier", "fast", vscode.ConfigurationTarget.Global);
 			const requestBody = new OpenaiApi("gpt-6").prepareRequestBody(
 				{ model: "gpt-6", messages: [], stream: true },
-				{ id: "gpt-6", owned_by: "openai" },
+				{ id: "gpt-6", owned_by: "openai", useGlobalServiceTier: true },
 				undefined
 			);
 			assert.strictEqual(requestBody.service_tier, "fast");
@@ -196,7 +196,7 @@ suite("modelConfiguration", () => {
 			await config.update("oaicopilot.serviceTier", "fast", vscode.ConfigurationTarget.Global);
 			const requestBody = new OpenaiResponsesApi("gpt-6").prepareRequestBody(
 				{ model: "gpt-6", input: [], stream: true },
-				{ id: "gpt-6", owned_by: "openai", apiMode: "openai-responses" },
+				{ id: "gpt-6", owned_by: "openai", apiMode: "openai-responses", useGlobalServiceTier: true },
 				undefined
 			);
 			assert.strictEqual(requestBody.service_tier, "fast");

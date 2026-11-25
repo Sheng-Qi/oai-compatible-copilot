@@ -17,11 +17,15 @@ suite("httpClient", () => {
 			port: 1082,
 		});
 		assert.throws(() => parseModelProxy("ftp://127.0.0.1:1082"), /Unsupported model proxy scheme/);
+		assert.throws(() => parseModelProxy("https://localhost:8080"), /Unsupported model proxy scheme/);
+		assert.throws(() => parseModelProxy("http://user:secret@localhost:8080"), (error: Error) =>
+			/authentication is not supported/.test(error.message) && !error.message.includes("secret"));
 	});
 
 	test("uses global fetch when no proxy or timeout is configured", () => {
 		assert.strictEqual(createModelFetch({}), fetch);
 		assert.strictEqual(createModelFetch({ timeoutMs: 0 }), fetch);
+		assert.notStrictEqual(createModelFetch({ direct: true }), fetch);
 	});
 
 	test("reuses dispatcher per proxy/timeout combo", () => {

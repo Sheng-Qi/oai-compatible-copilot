@@ -51,6 +51,7 @@ type IncomingMessage =
 	| { type: "requestInit" }
 	| {
 			type: "saveGlobalConfig";
+			dirty: string[];
 			baseUrl: string;
 			apiKey: string;
 			delay: number;
@@ -180,6 +181,7 @@ export class ConfigViewPanel {
 				break;
 			case "saveGlobalConfig":
 				await this.saveGlobalConfig(
+					message.dirty,
 					message.baseUrl,
 					message.apiKey,
 					message.delay,
@@ -317,6 +319,7 @@ export class ConfigViewPanel {
 	}
 
 	private async saveGlobalConfig(
+		dirty: string[],
 		rawBaseUrl: string,
 		rawApiKey: string,
 		delay: number,
@@ -333,34 +336,39 @@ export class ConfigViewPanel {
 		const config = vscode.workspace.getConfiguration();
 
 		// Validate proxy profiles before touching any setting so a broken JSON aborts cleanly.
-		const proxyProfiles = parseProxyProfilesJson(rawProxyProfiles);
+		const changed = new Set(dirty);
+		const proxyProfiles = parseProxyProfilesJson(changed.has("proxyProfilesRaw") ? rawProxyProfiles : "");
 		if (!proxyProfiles.ok) {
 			vscode.window.showErrorMessage(proxyProfiles.error);
 			return;
 		}
 
-		const proxySpec = rawProxySpec.trim();
-		await config.update("oaicopilot.proxy", proxySpec, vscode.ConfigurationTarget.Global);
-		await config.update("oaicopilot.proxies", proxyProfiles.value, vscode.ConfigurationTarget.Global);
-		await config.update("oaicopilot.baseUrl", baseUrl, vscode.ConfigurationTarget.Global);
-		await config.update("oaicopilot.delay", delay, vscode.ConfigurationTarget.Global);
-		await config.update(
-			"oaicopilot.serviceTier",
-			serviceTier === "fast" ? "fast" : "default",
-			vscode.ConfigurationTarget.Global
-		);
-		await config.update("oaicopilot.readFileLines", readFileLines, vscode.ConfigurationTarget.Global);
-		await config.update("oaicopilot.retry", retry, vscode.ConfigurationTarget.Global);
-		await config.update("oaicopilot.commitLanguage", commitLanguage, vscode.ConfigurationTarget.Global);
-		if (apiKey) {
-			await this.secrets.store("oaicopilot.apiKey", apiKey);
-		} else {
-			await this.secrets.delete("oaicopilot.apiKey");
+		const settings = {
+			proxySpec: ["proxy", rawProxySpec.trim()],
+			proxyProfilesRaw: ["proxies", proxyProfiles.value],
+			baseUrl: ["baseUrl", baseUrl],
+			delay: ["delay", delay],
+			serviceTier: ["serviceTier", serviceTier === "fast" ? "fast" : "default"],
+			readFileLines: ["readFileLines", readFileLines],
+			retry: ["retry", retry],
+			commitLanguage: ["commitLanguage", commitLanguage],
+		} as const;
+		for (const [field, [key, value]] of Object.entries(settings)) {
+			if (changed.has(field)) {
+				await config.update(`oaicopilot.${key}`, value, vscode.ConfigurationTarget.Global);
+			}
+		}
+		if (changed.has("apiKey")) {
+			if (apiKey) {
+				await this.secrets.store("oaicopilot.apiKey", apiKey);
+			} else {
+				await this.secrets.delete("oaicopilot.apiKey");
+			}
 		}
 
 		// Update models to set useForCommitGeneration based on selected commitModel
-		if (commitModel) {
-			const models = config.get<HFModelItem[]>("oaicopilot.models", []);
+		if (changed.has("commitModel")) {
+			const models = config.inspect<HFModelItem[]>("oaicopilot.models")?.globalValue ?? [];
 			const updatedModels = models.map((model) => {
 				const fullModelId = `${model.id}${model.configId ? "::" + model.configId : ""}`;
 				if (fullModelId === commitModel) {
@@ -374,7 +382,7 @@ export class ConfigViewPanel {
 		}
 
 		vscode.window.showInformationMessage(
-			"Custom OAI base URL, Delay, Retry and API Key have been saved to global settings."
+			"Changed Custom OAI fields saved to User settings. Workspace or Remote overrides may still apply."
 		);
 		// Send refresh signal to frontend
 		await this.sendInit();
@@ -561,8 +569,7 @@ export class ConfigViewPanel {
 				((originalConfigId && m.configId === originalConfigId) || (!originalConfigId && !m.configId));
 
 			if (isTargetModel) {
-				// Update with new values
-				return model;
+				return { ...model, proxy: m.proxy, timeoutMs: m.timeoutMs, opencodeSession: m.opencodeSession, responsesCacheGroup: m.responsesCacheGroup, useGlobalServiceTier: m.useGlobalServiceTier };
 			}
 			return m;
 		});
@@ -694,34 +701,34 @@ export class ConfigViewPanel {
 
 			const config = vscode.workspace.getConfiguration();
 
-			await config.update("oaicopilot.baseUrl", importData.baseUrl, vscode.ConfigurationTarget.Global);
-			await config.update("oaicopilot.delay", importData.delay, vscode.ConfigurationTarget.Global);
+			const profiles = importData.proxyProfiles === undefined ? undefined : parseProxyProfilesJson(JSON.stringify(importData.proxyProfiles));
+			if (profiles && !profiles.ok) {
+				throw new Error(profiles.error);
+			}
+			for (const key of ["baseUrl", "delay", "retry", "readFileLines", "commitLanguage"] as const) {
+				if (importData[key] !== undefined) {
+					await config.update(`oaicopilot.${key}`, importData[key], vscode.ConfigurationTarget.Global);
+				}
+			}
 			if (importData.serviceTier === "fast" || importData.serviceTier === "default") {
 				await config.update("oaicopilot.serviceTier", importData.serviceTier, vscode.ConfigurationTarget.Global);
 			}
-			await config.update("oaicopilot.retry", importData.retry, vscode.ConfigurationTarget.Global);
-			await config.update("oaicopilot.readFileLines", importData.readFileLines, vscode.ConfigurationTarget.Global);
-			await config.update("oaicopilot.commitLanguage", importData.commitLanguage, vscode.ConfigurationTarget.Global);
-			await config.update(
-				"oaicopilot.proxy",
-				typeof importData.proxySpec === "string" ? importData.proxySpec : "",
-				vscode.ConfigurationTarget.Global
-			);
-			await config.update(
-				"oaicopilot.proxies",
-				Array.isArray(importData.proxyProfiles) ? importData.proxyProfiles : [],
-				vscode.ConfigurationTarget.Global
-			);
+			if (typeof importData.proxySpec === "string") {
+				await config.update("oaicopilot.proxy", importData.proxySpec, vscode.ConfigurationTarget.Global);
+			}
+			if (profiles?.ok) {
+				await config.update("oaicopilot.proxies", profiles.value, vscode.ConfigurationTarget.Global);
+			}
 
 			if (importData.apiKey) {
 				await this.secrets.store("oaicopilot.apiKey", importData.apiKey);
-			} else {
+			} else if (importData.apiKey === "") {
 				await this.secrets.delete("oaicopilot.apiKey");
 			}
 
 			await config.update("oaicopilot.models", importData.models, vscode.ConfigurationTarget.Global);
 
-			for (const [provider, key] of Object.entries(importData.providerKeys)) {
+			for (const [provider, key] of Object.entries(importData.providerKeys ?? {})) {
 				const normalized = provider.toLowerCase();
 				if (key) {
 					await this.secrets.store(`oaicopilot.apiKey.${normalized}`, key);

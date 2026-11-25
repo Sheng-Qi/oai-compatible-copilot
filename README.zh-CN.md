@@ -14,14 +14,14 @@
 [![License](https://img.shields.io/github/license/JohnnyZ93/oai-compatible-copilot?color=orange&label=License)](https://github.com/JohnnyZ93/oai-compatible-copilot/blob/main/LICENSE)
 
 > [!IMPORTANT]
-> 这是 [JohnnyZ93/oai-compatible-copilot](https://github.com/JohnnyZ93/oai-compatible-copilot) 的维护分支。它保留上游扩展 ID，目前只增加一项聚焦的兼容性修复：当 OpenAI Responses 兼容网关完整重放一遍 `response.output_text.delta` 序列时，Copilot Agent 模式不再显示重复回复。Ask 模式以及原本就发送标准流的供应商不受影响。
+> 本分支的扩展 ID 为 `custom.custom-oai-copilot`，模型 vendor 为 `custom-oaicopilot`。保留 `oaicopilot.*` 设置名；从上游迁移时可能需要重新录入密钥并选择模型。若同时安装了上游扩展，建议先禁用它以免设置冲突。
 
 ## Fork 版本下载
 
 从[本分支的 Releases 页面](https://github.com/Sheng-Qi/oai-compatible-copilot/releases)下载最新 VSIX，然后执行：
 
 ```bash
-code --install-extension ./oai-compatible-copilot-*.vsix --force
+code --install-extension ./custom-oai-copilot-v0.6.0.vsix --force
 ```
 
 使用 Remote SSH 时，还需要在远程窗口中安装 VSIX；也可以运行 **Extensions: Install from VSIX...** 并选择远程目标。安装后请重新加载 VS Code 窗口。
@@ -30,7 +30,7 @@ code --install-extension ./oai-compatible-copilot-*.vsix --force
 
 - 在 Agent 模式中抑制已经输出过的 OpenAI Responses delta 序列被完整重放。
 - 只暂存可能的重放前缀；如果后续内容不匹配或流提前结束，则原样输出暂存文本。
-- 不修改 Chat Completions、Anthropic、Gemini 或 Ollama 的请求和响应处理。
+- 增加模型代理与超时、可选 OpenCode 兼容和 Fast 档位，并为 VS Code 原生本地 BYOK 提供模型列表刷新。
 - 不包含早期实验性的累计快照兼容逻辑。
 
 ### 创建 GitHub Release
@@ -40,15 +40,15 @@ code --install-extension ./oai-compatible-copilot-*.vsix --force
 ```bash
 git switch main
 git pull --ff-only
-git tag -a v0.4.2-replay.1 -m "OpenAI Responses Agent replay fix"
-git push origin v0.4.2-replay.1
+git tag -a v0.6.0 -m "Release 0.6.0"
+git push origin v0.6.0
 ```
 
 可以在 <https://github.com/Sheng-Qi/oai-compatible-copilot/actions> 查看构建状态。如果标签有误且 Release 尚未发布，可以删除后重建：
 
 ```bash
-git tag -d v0.4.2-replay.1
-git push origin :refs/tags/v0.4.2-replay.1
+git tag -d v0.6.0
+git push origin :refs/tags/v0.6.0
 ```
 
 ## ✨ 特性
@@ -143,10 +143,12 @@ Remote-SSH 窗口里仍然可用的功能：
 
 解析优先级：
 
-1. `models[].proxy`（解析出至少一个候选时）
+1. `models[].proxy`（显式设置时）
 2. `oaicopilot.proxy`
 3. 自动：第一个 `useIn` 匹配当前环境的配置
 4. 直连
+
+显式代理无效或没有适用候选时会报错，而不是降级直连。TCP 探测只在发请求前筛选候选，不验证代理握手，也不会在推理失败后重发。关闭探测时使用第一个适用候选。不支持 HTTPS 代理服务器或 URL 内嵌认证。模型发现走 VS Code 默认 fetch，不使用模型级代理或超时。
 
 `useIn` 基于 `vscode.env.remoteName` 过滤：`"local"` 匹配本地窗口，`"remote"` 匹配任意远程窗口，其余值按前缀匹配 remoteName（例如 `"ssh"`、`"wsl"`）。省略则到处可用。
 
@@ -580,7 +582,8 @@ VS Code Copilot 针对特定模型优化了系统提示词。[详细介绍](http
 
 ## 全局配置
 
-- `oaicopilot.serviceTier`：OpenAI Chat Completions / Responses 上 GPT-6+ 模型的全局服务层级（`default` / `fast`）。`fast` 以更高成本换取更低延迟。可经命令面板（`CustomOAICopilot: Switch Service Tier`）快速切换，下一次请求即生效。非 GPT-6 模型永远不会收到该参数。支持按机器/按远端覆盖。想固定单个模型可用其 `extra: { "service_tier": "fast" }`。
+- `oaicopilot.serviceTier`：全局档位偏好（`default` / `fast`）。仅给端点支持 `service_tier` 的 GPT‑6+ 模型加入 `"useGlobalServiceTier": true`。Standard 不发送档位字段；`extra.service_tier` 仍可显式覆盖。
+- Responses 在 `opencodeSession` 之外默认不请求加密推理状态；需要时可配置 `"extra": { "include": ["reasoning.encrypted_content"] }`。流错误直接报告，不改请求重发。由文本推导的缓存亲和键不是唯一会话 ID。
 
 ## 致谢
 

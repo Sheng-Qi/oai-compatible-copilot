@@ -147,13 +147,15 @@ async function generateCommitMsgForRepository(secrets: vscode.SecretStorage, rep
 			title: `Generating commit message for ${repoPath.split(path.sep).pop() || "repository"}...`,
 			cancellable: true,
 		},
-		() => performCommitMsgGeneration(secrets, gitDiff, inputBox)
+		(_progress, token) => performCommitMsgGeneration(secrets, gitDiff, inputBox, token)
 	);
 }
 
-async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff: string, inputBox: any) {
+async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff: string, inputBox: vscode.SourceControlInputBox, token: vscode.CancellationToken) {
 	const startTime = Date.now();
 	let modelId: string | undefined;
+	let requestTimeout: ReturnType<typeof setTimeout> | undefined;
+	let cancellation: vscode.Disposable | undefined;
 	try {
 		vscode.commands.executeCommand("setContext", "custom-oaicopilot.isGeneratingCommit", true);
 		const config = vscode.workspace.getConfiguration();
@@ -231,16 +233,24 @@ async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff
 		}
 
 		commitGenerationAbortController = new AbortController();
+		const controller = commitGenerationAbortController;
+		cancellation = token.onCancellationRequested(() => controller.abort());
+		if (token.isCancellationRequested) {
+			controller.abort();
+		}
 
 		// Resolve proxy for commit generation (same rules as chat requests).
 		const proxyProfiles = normalizeProxyProfiles(config.get<unknown>("oaicopilot.proxies", []));
+		if (proxyProfiles.warnings.length) {
+			throw new Error("Invalid oaicopilot.proxies configuration; check profile names, URLs and useIn filters");
+		}
 		const proxyResolution = resolveProxyForModel(
 			selectedModel.proxy,
 			config.get<string>("oaicopilot.proxy", ""),
 			proxyProfiles.profiles,
 			vscode.env.remoteName
 		);
-		for (const warning of [...proxyProfiles.warnings, ...proxyResolution.warnings]) {
+		for (const warning of proxyResolution.warnings) {
 			logger.warn("commit.proxy.warning", { modelId, warning });
 		}
 		const proxyProbeTimeoutMs = config.get<number>("oaicopilot.proxyProbeTimeoutMs", PROXY_PROBE_DEFAULT_TIMEOUT_MS);
@@ -248,14 +258,23 @@ async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff
 		if (chosenProxy.probeFailures.length > 0) {
 			logger.warn("commit.proxy.probeFailures", { modelId, failures: chosenProxy.probeFailures });
 		}
-		const dispatchFetch =
-			chosenProxy.entry?.kind === "proxy" ? createModelFetch({ proxy: chosenProxy.entry.raw }) : fetch;
+		const proxy = chosenProxy.entry?.kind === "proxy" ? chosenProxy.entry.raw : undefined;
+		const timeoutMs = selectedModel.timeoutMs;
+		const modelFetch = createModelFetch({ proxy, timeoutMs, direct: chosenProxy.entry?.kind === "direct" });
+		const signal = controller.signal;
+		if (timeoutMs && timeoutMs > 0) {
+			requestTimeout = setTimeout(() => controller.abort(new Error("Commit generation timed out")), timeoutMs);
+		}
+		const dispatchFetch: typeof fetch = (input, init) => {
+			signal.throwIfAborted();
+			return modelFetch(input, { ...init, signal });
+		};
 
 		const stream = apiInstance.createMessage(selectedModel, systemPrompt, messages, baseUrl, apiKey, dispatchFetch);
 
 		let response = "";
 		for await (const chunk of stream) {
-			commitGenerationAbortController.signal.throwIfAborted();
+			signal.throwIfAborted();
 			if (chunk.type === "text") {
 				response += chunk.text;
 				inputBox.value = extractCommitMessage(response);
@@ -274,6 +293,8 @@ async function performCommitMsgGeneration(secrets: vscode.SecretStorage, gitDiff
 		logger.error("commit.error", { modelId: modelId ?? "unknown", error: errorMessage });
 		vscode.window.showErrorMessage(`Failed to generate commit message: ${errorMessage}`);
 	} finally {
+		cancellation?.dispose();
+		clearTimeout(requestTimeout);
 		vscode.commands.executeCommand("setContext", "custom-oaicopilot.isGeneratingCommit", false);
 	}
 }
